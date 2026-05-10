@@ -1,0 +1,1693 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Tower Stack</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%;
+    overflow: hidden;
+    background: #1a1a2e;
+    touch-action: none;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  canvas {
+    display: block;
+    width: 100vw;
+    height: 100vh;
+  }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<script>
+// ============================================================
+// CONFIG
+// ============================================================
+const CFG = {
+  // Block (SQUARE)
+  blockSize: 90,
+
+  // Swing — constant speed
+  swingSpeed: Math.PI,
+  // Amplitude ramps with tower height (gentler progression)
+  maxAngleStart: Math.PI * 1 / 180,   // 1° at start
+  maxAngleMax: Math.PI * 20 / 180,     // 20° max — configurable via settings
+
+  // Cable — fixed length = 4 × blockSize
+  cableLength: 90 * 4, // 360px
+
+  // Physics
+  gravity: 2000,
+
+  // Miss threshold: < 30% overlap = miss
+  missOverlapRatio: 0.3,
+
+  // Lives
+  maxLives: 3,
+
+  // Perfect tolerance (px)
+  perfectTolerance: 3,
+
+  // Camera: show 3.5 blocks of tower at bottom
+  towerViewportRatio: 0.4, // ratio of screen for tower area (adjusted dynamically)
+  visibleBlocks: 3.5,
+  cameraLerp: 4.0,
+
+  // Wobble — amplitude based on cumulative inaccuracy + height
+  wobbleHeightFactor: 0.02,
+  wobbleSpringK: 5,
+  wobbleDamping: 1.5,
+  wobbleReducePerfection: 0.5,
+  wobbleReduceGood: 0.15,
+
+  // Cable elasticity (stretch) — visible but slow
+  cableStretchFactor: 0.04, // 4% max stretch
+  cableStretchDamping: 12.0, // heavy damping for slow, smooth motion
+  cableStiffness: 6, // very soft spring → slow, visible stretch
+
+  // Colors
+  blockColors: ['#FF6B6B','#FFD93D','#6BCB77','#4D96FF','#C084FC','#FFA07A'],
+  craneColor: '#546E7A',
+  cableColor: '#37474F',
+  hookColor: '#FFD93D',
+
+  // Background zones — 8 zones, 10 floors each, smooth gradient transitions
+  bgZones: [
+    { maxFloor: 10,  skyTop: '#87CEEB', skyBot: '#D4F1F9', label: 'ground',   elements: ['tree','cloud','bird'] },
+    { maxFloor: 20,  skyTop: '#6BB3D9', skyBot: '#B0DAE8', label: 'lowSky',    elements: ['cloud','bird'] },
+    { maxFloor: 30,  skyTop: '#B8C6D4', skyBot: '#D8E2EA', label: 'cloudLayer', elements: ['cloud'] },
+    { maxFloor: 40,  skyTop: '#3A8FBF', skyBot: '#7CC0E0', label: 'aboveClouds', elements: ['cloud','plane'] },
+    { maxFloor: 50,  skyTop: '#1B4F72', skyBot: '#5499C7', label: 'strato',    elements: ['plane'] },
+    { maxFloor: 60,  skyTop: '#4A235A', skyBot: '#7D3C98', label: 'meso',      elements: ['star','satellite'] },
+    { maxFloor: 70,  skyTop: '#1B0A2E', skyBot: '#3C1F5E', label: 'thermo',    elements: ['star','satellite'] },
+    { maxFloor: Infinity, skyTop: '#050510', skyBot: '#0A0A20', label: 'space', elements: ['star','satellite'] },
+  ],
+
+  // Scoring
+  baseScore: 100,
+  perfectBonus: 50,
+  milestoneEvery: 10,
+  milestoneBonus: 500,
+
+  storageKey: 'towerStack_v2',
+};
+
+// ============================================================
+// UTILS
+// ============================================================
+function lerp(a, b, t) { return a + (b - a) * t; }
+function clamp(v, mn, mx) { return Math.max(mn, Math.min(mx, v)); }
+
+function shadeColor(hex, pct) {
+  let r = parseInt(hex.slice(1,3),16);
+  let g = parseInt(hex.slice(3,5),16);
+  let b = parseInt(hex.slice(5,7),16);
+  r = clamp(Math.round(r * (1 + pct/100)), 0, 255);
+  g = clamp(Math.round(g * (1 + pct/100)), 0, 255);
+  b = clamp(Math.round(b * (1 + pct/100)), 0, 255);
+  return `rgb(${r},${g},${b})`;
+}
+
+function lerpColor(c1, c2, t) {
+  const r1 = parseInt(c1.slice(1,3),16), g1 = parseInt(c1.slice(3,5),16), b1 = parseInt(c1.slice(5,7),16);
+  const r2 = parseInt(c2.slice(1,3),16), g2 = parseInt(c2.slice(3,5),16), b2 = parseInt(c2.slice(5,7),16);
+  const r = Math.round(lerp(r1,r2,t)), g = Math.round(lerp(g1,g2,t)), b = Math.round(lerp(b1,b2,t));
+  return `rgb(${r},${g},${b})`;
+}
+
+// ============================================================
+// STORAGE
+// ============================================================
+const Storage = {
+  _defaults: { highScore: 0, totalTowers: 0, highestTower: 0, towers: [] },
+  load() {
+    try {
+      const raw = localStorage.getItem(CFG.storageKey);
+      if (!raw) return { ...this._defaults, towers: [] };
+      return JSON.parse(raw);
+    } catch { return { ...this._defaults, towers: [] }; }
+  },
+  save(data) {
+    try { localStorage.setItem(CFG.storageKey, JSON.stringify(data)); } catch {}
+  },
+  addTower(height, score) {
+    const data = this.load();
+    data.towers.push({ height, score, date: new Date().toISOString().slice(0,10) });
+    if (data.towers.length > 50) data.towers = data.towers.slice(-50);
+    data.totalTowers = data.towers.length;
+    if (height > data.highestTower) data.highestTower = height;
+    if (score > data.highScore) data.highScore = score;
+    this.save(data);
+    return data;
+  }
+};
+
+// ============================================================
+// PARTICLES
+// ============================================================
+class Particle {
+  constructor(x, y, color) {
+    this.x = x; this.y = y;
+    const a = Math.random() * Math.PI * 2;
+    const s = 40 + Math.random() * 80;
+    this.vx = Math.cos(a) * s;
+    this.vy = Math.sin(a) * s;
+    this.life = 0.4 + Math.random() * 0.4;
+    this.maxLife = this.life;
+    this.size = 3 + Math.random() * 5;
+    this.color = color;
+  }
+  update(dt) {
+    this.x += this.vx * dt; this.y += this.vy * dt;
+    this.vy += 200 * dt; this.life -= dt;
+  }
+  draw(ctx) {
+    const alpha = clamp(this.life / this.maxLife, 0, 1);
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = this.color;
+    ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+}
+
+// ============================================================
+// CANVAS SETUP
+// ============================================================
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+let W, H, DPR;
+
+function resize() {
+  DPR = window.devicePixelRatio || 1;
+  W = Math.min(window.innerWidth, 480);
+  H = window.innerHeight;
+  canvas.width = W * DPR;
+  canvas.height = H * DPR;
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ============================================================
+// GAME STATE
+// ============================================================
+const STATES = { MENU: 0, PLAYING: 1, DROPPING: 2, GAME_OVER: 3, CITY_VIEW: 4, SETTINGS: 5 };
+let state = STATES.MENU;
+let score = 0, combo = 0, bestCombo = 0;
+let lives = CFG.maxLives;
+let tower = []; // [{x, y, color, perfect}]
+let fallingBlock = null;
+let debris = [];
+let particles = [];
+let floatTexts = [];
+let crane = { pivotX: 0, pivotY: 0, time: 0, stretch: 0, stretchVel: 0 };
+let camera = { y: 0, targetY: 0 };
+let shake = { x: 0, y: 0, timer: 0, intensity: 0 };
+let wobble = { angle: 0, angularVel: 0 };
+let inputLocked = false;
+let lastTime = 0;
+let menuAnim = 0;
+let gameOverTimer = 0;
+let hintOpacity = 1;
+let cityScrollX = 0;
+let cityTouchLastX = 0;
+let cityDragging = false;
+let buttons = [];
+
+let BS = CFG.blockSize; // updated in applySettings
+
+// ============================================================
+// HELPERS
+// ============================================================
+function currentMaxAngle() {
+  // Smooth interpolation: 10% of maxAngle at floor 0, 100% at floor 80+
+  const floors = floorCount();
+  const maxDeg = CFG.maxAngleMax * 180 / Math.PI;
+  const startDeg = CFG.maxAngleStart * 180 / Math.PI;
+
+  // Normalized progress: 0 at floor 0, 1 at floor 80+
+  const t = clamp(floors / 80, 0, 1);
+  // Smoothstep
+  const st = t * t * (3 - 2 * t);
+  // Interpolate from startDeg to maxDeg
+  const angleDeg = lerp(startDeg, maxDeg, st);
+  return Math.PI * angleDeg / 180;
+}
+function blockColor(i) { return CFG.blockColors[i % CFG.blockColors.length]; }
+function getTowerTop() { return tower.length > 0 ? tower[tower.length - 1] : null; }
+function floorCount() { return Math.max(0, tower.length - 1); }
+
+// Get background zone for current height
+function getBgZone(floors) {
+  for (const z of CFG.bgZones) {
+    if (floors < z.maxFloor) return z;
+  }
+  return CFG.bgZones[CFG.bgZones.length - 1];
+}
+function getBgZoneIndex(floors) {
+  for (let i = 0; i < CFG.bgZones.length; i++) {
+    if (floors < CFG.bgZones[i].maxFloor) return i;
+  }
+  return CFG.bgZones.length - 1;
+}
+
+// ============================================================
+// GAME FUNCTIONS
+// ============================================================
+function startGame() {
+  state = STATES.PLAYING;
+  score = 0; combo = 0; bestCombo = 0;
+  lives = CFG.maxLives;
+  tower = []; debris = []; particles = []; floatTexts = [];
+  fallingBlock = null;
+  crane.time = 0;
+  crane.stretch = 0;
+  crane.stretchVel = 0;
+  wobble = { angle: 0, angularVel: 0, targetAngle: 0 };
+  camera = { y: 0, targetY: 0 };
+  shake = { x: 0, y: 0, timer: 0, intensity: 0 };
+  hintOpacity = 1;
+  gameOverTimer = 0;
+
+  // Base block
+  tower.push({
+    x: W / 2 - BS / 2,
+    y: 0, // world y, we'll set camera so this is visible
+    color: '#78909C',
+    perfect: false,
+    isBase: true,
+    offset: 0 // cumulative inaccuracy per block
+  });
+
+  // Set camera so base block is at bottom of visible area, with visibleBlocks blocks showing
+  camera.targetY = tower[0].y - (H - BS - 20);
+  camera.y = camera.targetY;
+
+  spawnCrane();
+}
+
+function spawnCrane() {
+  const top = getTowerTop();
+  // Cable length is FIXED = 4 × blockSize
+  // Block hangs at: pivotY + cableLength (below pivot)
+  // Crane pivot can be above the visible screen — that's OK
+
+  const cableLen = CFG.cableLength; // 360px
+
+  // Gap between block bottom and tower top = BS (one block height)
+  // block bottom = hookY + BS (hookY is top of block)
+  // So hookY = top.y - BS - BS = top.y - 2*BS
+  const desiredHookY = top.y - 2 * BS;
+  const pivotY = desiredHookY - cableLen;
+
+  crane.pivotX = W / 2;
+  crane.pivotY = pivotY;
+  crane.cableLength = cableLen;
+  crane.time = 0;
+  crane.stretch = 0;
+  crane.stretchVel = 0;
+}
+
+function getSwingState() {
+  const speed = CFG.swingSpeed; // constant
+  const maxA = currentMaxAngle();
+  const angle = maxA * Math.sin(crane.time * speed);
+  const angularVel = maxA * speed * Math.cos(crane.time * speed);
+
+  // Cable length with stretch
+  const stretch = crane.stretch || 0;
+  const cl = (crane.cableLength || 140) + stretch;
+  const hookX = crane.pivotX + Math.sin(angle) * cl;
+  const hookY = crane.pivotY + Math.cos(angle) * cl;
+
+  // Block position: hook is the attachment point at top-center of block
+  const blockX = hookX - BS / 2;
+  const blockY = hookY;
+
+  // Horizontal velocity (px/s) of the block
+  const vx = angularVel * cl;
+
+  return { angle, blockX, blockY, vx, speed, maxA, cl };
+}
+
+function dropBlock() {
+  if (state !== STATES.PLAYING) return;
+  const { blockX, blockY, vx } = getSwingState();
+
+  fallingBlock = {
+    x: blockX, y: blockY,
+    width: BS, height: BS,
+    color: blockColor(tower.length),
+    vx: vx, // horizontal inertia from swing
+    vy: 0
+  };
+  state = STATES.DROPPING;
+  hintOpacity = 0;
+}
+
+function landBlock() {
+  const fb = fallingBlock;
+  const top = getTowerTop();
+  if (!top) { missBlock(); return; }
+
+  // Calculate overlap
+  const oL = Math.max(fb.x, top.x);
+  const oR = Math.min(fb.x + BS, top.x + BS);
+  const overlapW = oR - oL;
+  const overlapRatio = overlapW / BS;
+
+  if (overlapW <= 0) {
+    // Complete miss
+    missBlock(fb);
+    return;
+  }
+
+  // Check if overlap < 30% = miss
+  if (overlapRatio < CFG.missOverlapRatio) {
+    missBlock(fb);
+    return;
+  }
+
+  // Block lands — place it (full size, NO cutting)
+  // Position: aligned to where it actually landed
+  const placed = {
+    x: fb.x, // full block, positioned where it fell
+    y: top.y - BS,
+    color: fb.color,
+    perfect: false,
+    offset: 0 // will be set below
+  };
+
+  // Check perfect (centered within tolerance)
+  const centerOffset = Math.abs((fb.x + BS/2) - (top.x + BS/2));
+  const isPerfect = centerOffset <= CFG.perfectTolerance;
+
+  // Store offset for this block
+  placed.offset = centerOffset;
+
+  if (isPerfect) {
+    // Snap to perfect position
+    placed.x = top.x;
+    placed.perfect = true;
+    placed.offset = 0;
+  }
+
+  // Calculate wobble amplitude from cumulative inaccuracy + height
+  const cumulativeOffset = tower.reduce((sum, b) => sum + b.offset, 0);
+  const avgOffset = cumulativeOffset / tower.length;
+  const heightScale = 1 + tower.length * CFG.wobbleHeightFactor;
+  // Target angle: based on average inaccuracy scaled by height
+  const targetWobbleAngle = (avgOffset / BS) * heightScale * 0.3;
+
+  tower.push(placed);
+
+  // Scoring
+  if (isPerfect) {
+    combo++;
+    if (combo > bestCombo) bestCombo = combo;
+    const multiplier = combo; // after increment, combo IS the multiplier
+    const earned = (CFG.baseScore + CFG.perfectBonus) * multiplier;
+    score += earned;
+
+    floatTexts.push({
+      text: combo > 1 ? `PERFECT ×${combo}!` : 'PERFECT!',
+      x: placed.x + BS/2, y: placed.y - 10,
+      vy: -70, life: 1.0, maxLife: 1.0, color: '#FFD700', size: 20
+    });
+    for (let i = 0; i < 10; i++) {
+      particles.push(new Particle(placed.x + BS/2, placed.y + BS/2, '#FFD700'));
+    }
+    triggerShake(3, 0.15);
+  } else {
+    // Off-center landing
+    const multiplier = combo + 1;
+    score += CFG.baseScore * multiplier;
+    triggerShake(1, 0.08);
+  }
+
+  // Set wobble target angle based on cumulative inaccuracy
+  // Amplitude is constant until next block lands
+  wobble.targetAngle = targetWobbleAngle;
+  // Give initial impulse toward target
+  if (Math.abs(wobble.angularVel) < 0.1) {
+    wobble.angularVel = targetWobbleAngle * 2;
+  }
+
+  // Score float (reuse earned from scoring block)
+  const floatEarned = isPerfect ? (CFG.baseScore + CFG.perfectBonus) * combo : CFG.baseScore * (combo + 1);
+  floatTexts.push({
+    text: `+${floatEarned}`, x: placed.x + BS/2, y: placed.y + BS/2,
+    vy: -40, life: 0.8, maxLife: 0.8, color: '#FFFFFF', size: 16
+  });
+
+  // Milestone
+  if (floorCount() > 0 && floorCount() % CFG.milestoneEvery === 0) {
+    score += CFG.milestoneBonus;
+    floatTexts.push({
+      text: `MILESTONE +${CFG.milestoneBonus}`, x: W/2, y: placed.y,
+      vy: -50, life: 1.2, maxLife: 1.2, color: '#FFD700', size: 22
+    });
+  }
+
+  // Update camera
+  updateCameraTarget();
+
+  fallingBlock = null;
+  state = STATES.PLAYING;
+  spawnCrane();
+}
+
+function missBlock(fb) {
+  if (fb) {
+    // Create falling debris
+    const dir = fb.x + BS/2 < W/2 ? -1 : 1;
+    debris.push({
+      x: fb.x, y: fb.y, width: BS, height: BS,
+      color: fb.color,
+      vx: dir * (80 + Math.abs(fb.vx)), vy: -50,
+      rot: 0, vr: dir * (3 + Math.random() * 3)
+    });
+  }
+
+  lives--;
+  combo = 0;
+  triggerShake(5, 0.25);
+
+  floatTexts.push({
+    text: lives > 0 ? `MISS! ${lives} ❤️ left` : 'MISS!',
+    x: W/2, y: H * 0.35,
+    vy: -30, life: 1.0, maxLife: 1.0, color: '#FF4444', size: 24
+  });
+
+  if (lives <= 0) {
+    gameOver();
+    return;
+  }
+
+  fallingBlock = null;
+  state = STATES.PLAYING;
+  spawnCrane();
+}
+
+function gameOver() {
+  state = STATES.GAME_OVER;
+  fallingBlock = null;
+  gameOverTimer = 0;
+  triggerShake(8, 0.4);
+
+  const height = floorCount();
+  if (height > 0) {
+    Storage.addTower(height, score);
+  }
+}
+
+function updateCameraTarget() {
+  // Keep last 5-6 blocks in bottom 40% of screen
+  const top = getTowerTop();
+  if (!top) return;
+
+  // We want the tower top to be at a screen position that shows visibleBlocks blocks below it
+  // visibleBlocks * BS of tower content should fit in the tower viewport area
+  // towerViewportBottom = H, towerViewportTop = H - visibleBlocks * BS
+  // Tower top screen Y should be at towerViewportTop
+  // screenY = worldY - camera.y => camera.y = worldY - towerViewportTop
+  const towerViewportTop = H - CFG.visibleBlocks * BS;
+  camera.targetY = top.y - towerViewportTop;
+}
+
+function triggerShake(intensity, duration) {
+  shake.intensity = intensity;
+  shake.timer = duration;
+}
+
+// ============================================================
+// INPUT
+// ============================================================
+function handleAction() {
+  if (inputLocked) return;
+  inputLocked = true;
+  setTimeout(() => inputLocked = false, 150);
+
+  switch (state) {
+    case STATES.MENU: startGame(); break;
+    case STATES.PLAYING: dropBlock(); break;
+    case STATES.GAME_OVER: startGame(); break;
+  }
+}
+
+function handleButtonHit(mx, my) {
+  for (const btn of buttons) {
+    if (mx >= btn.cx - btn.w/2 && mx <= btn.cx + btn.w/2 &&
+        my >= btn.cy - btn.h/2 && my <= btn.cy + btn.h/2) {
+      btn.action();
+      return true;
+    }
+  }
+  return false;
+}
+
+canvas.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  const t = e.touches[0];
+  if (state === STATES.CITY_VIEW) {
+    cityTouchLastX = t.clientX;
+    cityDragging = true;
+    if (handleButtonHit(t.clientX, t.clientY)) return;
+    return;
+  }
+  if (state === STATES.MENU || state === STATES.GAME_OVER) {
+    if (handleButtonHit(t.clientX, t.clientY)) return;
+  }
+  handleAction();
+}, { passive: false });
+
+canvas.addEventListener('touchmove', (e) => {
+  e.preventDefault();
+  if (state === STATES.CITY_VIEW && cityDragging) {
+    const t = e.touches[0];
+    cityScrollX -= (t.clientX - cityTouchLastX);
+    cityTouchLastX = t.clientX;
+    cityScrollX = Math.max(0, cityScrollX);
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchend', () => { cityDragging = false; });
+
+canvas.addEventListener('mousedown', (e) => {
+  if (state === STATES.CITY_VIEW) {
+    cityTouchLastX = e.clientX;
+    cityDragging = true;
+    if (handleButtonHit(e.clientX, e.clientY)) return;
+    return;
+  }
+  if (state === STATES.MENU || state === STATES.GAME_OVER) {
+    if (handleButtonHit(e.clientX, e.clientY)) return;
+  }
+  handleAction();
+});
+
+canvas.addEventListener('mousemove', (e) => {
+  if (state === STATES.CITY_VIEW && cityDragging) {
+    cityScrollX -= (e.clientX - cityTouchLastX);
+    cityTouchLastX = e.clientX;
+    cityScrollX = Math.max(0, cityScrollX);
+  }
+});
+
+canvas.addEventListener('mouseup', () => { cityDragging = false; });
+
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' || e.key === 'Enter') {
+    e.preventDefault();
+    handleAction();
+  }
+});
+
+// ============================================================
+// UPDATE
+// ============================================================
+function update(dt) {
+  // Shake
+  if (shake.timer > 0) {
+    shake.timer -= dt;
+    const t = Math.max(0, shake.timer);
+    shake.x = (Math.random() - 0.5) * 2 * shake.intensity * (t / 0.4);
+    shake.y = (Math.random() - 0.5) * 2 * shake.intensity * (t / 0.4);
+  } else {
+    shake.x = 0; shake.y = 0;
+  }
+
+  // Particles
+  particles = particles.filter(p => { p.update(dt); return p.life > 0; });
+
+  // Float texts
+  floatTexts = floatTexts.filter(ft => {
+    ft.y += ft.vy * dt;
+    ft.life -= dt;
+    return ft.life > 0;
+  });
+
+  // Debris
+  debris = debris.filter(d => {
+    d.vy += CFG.gravity * dt;
+    d.x += d.vx * dt;
+    d.y += d.vy * dt;
+    d.rot += d.vr * dt;
+    return d.y < camera.y + H + 200;
+  });
+
+  // Wobble — oscillate around 0 with amplitude = targetAngle
+  // targetAngle is set when a block lands and stays constant until next landing
+  if (state === STATES.PLAYING || state === STATES.DROPPING) {
+    // No wobble while base block is still visible on screen
+    const baseScreenY = tower[0].y - camera.y;
+    const baseVisible = baseScreenY > -BS && baseScreenY < H + BS;
+    if (baseVisible && tower.length <= Math.ceil(CFG.visibleBlocks)) {
+      wobble.angle = 0;
+      wobble.angularVel = 0;
+    } else {
+      // Damped spring toward oscillation with target amplitude
+      // spring: pull toward -angle (restoring) + drive toward targetAngle amplitude
+      const springForce = -CFG.wobbleSpringK * wobble.angle;
+      const dampForce = -CFG.wobbleDamping * wobble.angularVel;
+      // Add energy to maintain target amplitude
+      const currentAmplitude = Math.sqrt(wobble.angle * wobble.angle + (wobble.angularVel / CFG.wobbleSpringK) * (wobble.angularVel / CFG.wobbleSpringK));
+      const energyForce = (wobble.targetAngle - currentAmplitude) * CFG.wobbleSpringK * 0.5 * Math.sign(wobble.angularVel);
+      wobble.angularVel += (springForce + dampForce + energyForce) * dt;
+      wobble.angle += wobble.angularVel * dt;
+    }
+  }
+
+  // Crane swing
+  if (state === STATES.PLAYING) {
+    crane.time += dt;
+
+    // Cable stretch physics — simulates elasticity
+    // Centripetal force from pendulum causes stretch
+    const speed = CFG.swingSpeed;
+    const maxA = currentMaxAngle();
+    const angle = maxA * Math.sin(crane.time * speed);
+    const angAccel = -maxA * speed * speed * Math.sin(crane.time * speed);
+    const baseLen = crane.cableLength || 140;
+    // Centripetal + gravity component along cable
+    const centripetal = baseLen * (maxA * speed) * (maxA * speed);
+    // Simplified: stretch target based on swing dynamics
+    const maxStretch = baseLen * CFG.cableStretchFactor;
+    // Smooth stretch target: peaks at swing extremes, zero at center
+    const sinVal = Math.sin(crane.time * speed);
+    const stretchTarget = maxStretch * sinVal * sinVal;
+    // Soft spring-damper for stretch — high damping prevents jerk
+    const stretchSpring = (stretchTarget - crane.stretch) * CFG.cableStiffness;
+    const stretchDamp = -crane.stretchVel * CFG.cableStretchDamping * CFG.cableStiffness;
+    crane.stretchVel += (stretchSpring + stretchDamp) * dt;
+    crane.stretch += crane.stretchVel * dt;
+    // Clamp stretch
+    crane.stretch = clamp(crane.stretch, -maxStretch * 0.2, maxStretch);
+  }
+
+  // Falling block with inertia
+  if (state === STATES.DROPPING && fallingBlock) {
+    fallingBlock.vy += CFG.gravity * dt;
+    fallingBlock.x += fallingBlock.vx * dt; // horizontal inertia
+    fallingBlock.y += fallingBlock.vy * dt;
+
+    // Keep block on screen horizontally
+    fallingBlock.x = clamp(fallingBlock.x, -BS, W);
+
+    // Check collision with tower top
+    const top = getTowerTop();
+    if (top && fallingBlock.y + BS >= top.y) {
+      landBlock();
+    }
+
+    // Fell way below
+    if (fallingBlock && fallingBlock.y > camera.y + H + 200) {
+      missBlock(fallingBlock);
+    }
+  }
+
+  // Camera smooth follow
+  camera.y += (camera.targetY - camera.y) * CFG.cameraLerp * dt;
+
+  // Game over timer
+  if (state === STATES.GAME_OVER) gameOverTimer += dt;
+
+  // Menu animation
+  if (state === STATES.MENU) menuAnim += dt;
+}
+
+// ============================================================
+// DRAW — Background Elements
+// ============================================================
+
+// Floating background objects
+let bgObjects = [];
+function initBgObjects() {
+  bgObjects = [];
+  // Zone 0: ground — trees, clouds, birds
+  for (let i = 0; i < 10; i++) {
+    bgObjects.push({
+      type: 'tree', x: Math.random() * 500 - 50, baseY: 0,
+      size: 15 + Math.random() * 20, speed: 0.2 + Math.random() * 0.3,
+      phase: Math.random() * Math.PI * 2, zone: 0
+    });
+  }
+  for (let i = 0; i < 4; i++) {
+    bgObjects.push({
+      type: 'cloud', x: Math.random() * 500, baseY: -50 - Math.random() * 150,
+      size: 0.5 + Math.random() * 0.8, speed: 5 + Math.random() * 10,
+      phase: Math.random() * Math.PI * 2, zone: 0
+    });
+  }
+  // Zone 1: low sky — clouds, birds
+  for (let i = 0; i < 5; i++) {
+    bgObjects.push({
+      type: 'cloud', x: Math.random() * 500, baseY: -100 - Math.random() * 200,
+      size: 0.6 + Math.random() * 1.0, speed: 4 + Math.random() * 8,
+      phase: Math.random() * Math.PI * 2, zone: 1
+    });
+  }
+  for (let i = 0; i < 4; i++) {
+    bgObjects.push({
+      type: 'bird', x: Math.random() * 500, baseY: -50 - Math.random() * 200,
+      size: 1, speed: 15 + Math.random() * 20,
+      phase: Math.random() * Math.PI * 2, zone: 1
+    });
+  }
+  // Zone 2: cloud layer — dense clouds
+  for (let i = 0; i < 8; i++) {
+    bgObjects.push({
+      type: 'cloud', x: Math.random() * 500, baseY: -50 - Math.random() * 300,
+      size: 0.8 + Math.random() * 1.2, speed: 3 + Math.random() * 6,
+      phase: Math.random() * Math.PI * 2, zone: 2
+    });
+  }
+  // Zone 3: above clouds — sun, occasional cloud, planes
+  for (let i = 0; i < 2; i++) {
+    bgObjects.push({
+      type: 'cloud', x: Math.random() * 500, baseY: -100 - Math.random() * 150,
+      size: 0.4 + Math.random() * 0.6, speed: 8 + Math.random() * 12,
+      phase: Math.random() * Math.PI * 2, zone: 3
+    });
+  }
+  for (let i = 0; i < 2; i++) {
+    bgObjects.push({
+      type: 'plane', x: Math.random() * 500, baseY: -80 - Math.random() * 150,
+      size: 1, speed: 25 + Math.random() * 20,
+      phase: Math.random() * Math.PI * 2, zone: 3
+    });
+  }
+  // Zone 4: stratosphere — planes
+  for (let i = 0; i < 2; i++) {
+    bgObjects.push({
+      type: 'plane', x: Math.random() * 500, baseY: -100 - Math.random() * 200,
+      size: 1, speed: 30 + Math.random() * 20,
+      phase: Math.random() * Math.PI * 2, zone: 4
+    });
+  }
+  // Zone 5: mesosphere — first stars, satellites
+  for (let i = 0; i < 15; i++) {
+    bgObjects.push({
+      type: 'star', x: Math.random() * 480, baseY: Math.random() * H * 2 - H,
+      size: 1 + Math.random() * 2, speed: 0, phase: Math.random() * Math.PI * 2, zone: 5
+    });
+  }
+  for (let i = 0; i < 2; i++) {
+    bgObjects.push({
+      type: 'satellite', x: Math.random() * 500, baseY: -50 - Math.random() * 200,
+      size: 1, speed: 8 + Math.random() * 12,
+      phase: Math.random() * Math.PI * 2, zone: 5
+    });
+  }
+  // Zone 6: thermosphere — more stars, satellites
+  for (let i = 0; i < 25; i++) {
+    bgObjects.push({
+      type: 'star', x: Math.random() * 480, baseY: Math.random() * H * 2 - H,
+      size: 1.5 + Math.random() * 2.5, speed: 0, phase: Math.random() * Math.PI * 2, zone: 6
+    });
+  }
+  for (let i = 0; i < 2; i++) {
+    bgObjects.push({
+      type: 'satellite', x: Math.random() * 500, baseY: -30 - Math.random() * 150,
+      size: 1, speed: 5 + Math.random() * 10,
+      phase: Math.random() * Math.PI * 2, zone: 6
+    });
+  }
+  // Zone 7: space — dense stars, satellites
+  for (let i = 0; i < 40; i++) {
+    bgObjects.push({
+      type: 'star', x: Math.random() * 480, baseY: Math.random() * H * 2 - H,
+      size: 2 + Math.random() * 3, speed: 0, phase: Math.random() * Math.PI * 2, zone: 7
+    });
+  }
+  for (let i = 0; i < 2; i++) {
+    bgObjects.push({
+      type: 'satellite', x: Math.random() * 500, baseY: -20 - Math.random() * 100,
+      size: 1, speed: 4 + Math.random() * 8,
+      phase: Math.random() * Math.PI * 2, zone: 7
+    });
+  }
+}
+initBgObjects();
+
+function drawBackground() {
+  const floors = floorCount();
+  const zi = getBgZoneIndex(floors);
+  const zone = CFG.bgZones[zi];
+
+  // Smooth gradient transition between zones
+  // Blend with next zone when within last 30% of current zone
+  let skyTop = zone.skyTop;
+  let skyBot = zone.skyBot;
+  const prevMax = zi > 0 ? CFG.bgZones[zi - 1].maxFloor : 0;
+  const zoneSize = zone.maxFloor === Infinity ? 10 : (zone.maxFloor - prevMax);
+  const progress = (floors - prevMax) / zoneSize; // 0..1 within this zone
+
+  // Transition to next zone in last 30%
+  if (progress > 0.7 && zi < CFG.bgZones.length - 1) {
+    const nextZone = CFG.bgZones[zi + 1];
+    const t = (progress - 0.7) / 0.3; // 0..1 over last 30%
+    skyTop = lerpColor(zone.skyTop, nextZone.skyTop, t);
+    skyBot = lerpColor(zone.skyBot, nextZone.skyBot, t);
+  }
+  // Transition from prev zone in first 30%
+  if (progress < 0.3 && zi > 0) {
+    const prevZone = CFG.bgZones[zi - 1];
+    const t = progress / 0.3; // 0..1 over first 30%
+    skyTop = lerpColor(prevZone.skyTop, zone.skyTop, t);
+    skyBot = lerpColor(prevZone.skyBot, zone.skyBot, t);
+  }
+
+  // Sky gradient
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, skyTop);
+  grad.addColorStop(1, skyBot);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  const t = Date.now() / 1000;
+
+  // Draw bg objects for current and adjacent zones
+  for (const obj of bgObjects) {
+    if (obj.zone > zi + 1 || obj.zone < zi - 1) continue;
+
+    let alpha = 1;
+    if (obj.zone !== zi) alpha = 0.3; // fade adjacent zone objects
+
+    ctx.globalAlpha = alpha;
+
+    switch (obj.type) {
+      case 'tree': drawTree(obj, t); break;
+      case 'cloud': drawCloudObj(obj, t); break;
+      case 'bird': drawBird(obj, t); break;
+      case 'helicopter': drawHelicopter(obj, t); break;
+      case 'plane': drawPlane(obj, t); break;
+      case 'star': drawStar(obj, t); break;
+      case 'satellite': drawSatellite(obj, t); break;
+    }
+
+    ctx.globalAlpha = 1;
+  }
+}
+
+function drawTree(obj, t) {
+  // Trees at bottom of screen
+  const x = ((obj.x + t * obj.speed) % (W + 60)) - 30;
+  const y = H - 30;
+  const s = obj.size;
+  // Trunk
+  ctx.fillStyle = '#8B6914';
+  ctx.fillRect(x - s*0.1, y - s*1.5, s*0.2, s*1.5);
+  // Canopy
+  ctx.fillStyle = '#228B22';
+  ctx.beginPath();
+  ctx.moveTo(x, y - s*2.5);
+  ctx.lineTo(x - s*0.6, y - s*1.2);
+  ctx.lineTo(x + s*0.6, y - s*1.2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(x, y - s*3);
+  ctx.lineTo(x - s*0.45, y - s*1.8);
+  ctx.lineTo(x + s*0.45, y - s*1.8);
+  ctx.fill();
+}
+
+function drawCloudObj(obj, t) {
+  const x = ((obj.x + t * obj.speed) % (W + 120)) - 60;
+  const y = H * 0.15 + obj.baseY * 0.5 + Math.sin(t * 0.3 + obj.phase) * 10;
+  const s = obj.size;
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.beginPath();
+  ctx.arc(x, y, 20*s, 0, Math.PI*2);
+  ctx.arc(x + 20*s, y - 5*s, 16*s, 0, Math.PI*2);
+  ctx.arc(x - 15*s, y + 3*s, 14*s, 0, Math.PI*2);
+  ctx.fill();
+}
+
+function drawBird(obj, t) {
+  const x = ((obj.x + t * obj.speed) % (W + 40)) - 20;
+  const y = H * 0.2 + obj.baseY * 0.3 + Math.sin(t * 2 + obj.phase) * 8;
+  ctx.strokeStyle = '#333';
+  ctx.lineWidth = 2;
+  const wing = Math.sin(t * 8 + obj.phase) * 6;
+  ctx.beginPath();
+  ctx.moveTo(x - 8, y + wing);
+  ctx.quadraticCurveTo(x - 3, y - 3, x, y);
+  ctx.quadraticCurveTo(x + 3, y - 3, x + 8, y + wing);
+  ctx.stroke();
+}
+
+function drawHelicopter(obj, t) {
+  const x = ((obj.x + t * obj.speed) % (W + 80)) - 40;
+  const y = H * 0.15 + obj.baseY * 0.3 + Math.sin(t * 0.5 + obj.phase) * 15;
+  // Body
+  ctx.fillStyle = '#666';
+  ctx.beginPath();
+  ctx.ellipse(x, y, 15, 6, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // Rotor
+  ctx.strokeStyle = '#444';
+  ctx.lineWidth = 2;
+  const rotor = Math.sin(t * 30 + obj.phase) > 0 ? 20 : 18;
+  ctx.beginPath();
+  ctx.moveTo(x - rotor, y - 7);
+  ctx.lineTo(x + rotor, y - 7);
+  ctx.stroke();
+  // Tail
+  ctx.fillStyle = '#666';
+  ctx.fillRect(x + 14, y - 3, 12, 3);
+}
+
+function drawPlane(obj, t) {
+  const dir = obj.speed > 0 ? 1 : -1;
+  const x = ((obj.x + t * obj.speed * dir) % (W + 120)) - 60;
+  const y = H * 0.12 + obj.baseY * 0.2 + Math.sin(t * 0.3 + obj.phase) * 10;
+  // Body
+  ctx.fillStyle = '#E0E0E0';
+  ctx.beginPath();
+  ctx.ellipse(x, y, 20, 5, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // Wings
+  ctx.fillStyle = '#CCC';
+  ctx.beginPath();
+  ctx.moveTo(x - 3, y);
+  ctx.lineTo(x - 12, y - 12);
+  ctx.lineTo(x + 12, y - 12);
+  ctx.lineTo(x + 3, y);
+  ctx.fill();
+  // Tail
+  ctx.beginPath();
+  ctx.moveTo(x + 17, y);
+  ctx.lineTo(x + 22, y - 7);
+  ctx.lineTo(x + 22, y);
+  ctx.fill();
+  // Trail
+  ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(x + 25, y - 1);
+  ctx.lineTo(x + 60, y - 3);
+  ctx.moveTo(x + 25, y + 1);
+  ctx.lineTo(x + 60, y + 3);
+  ctx.stroke();
+}
+
+function drawStar(obj, t) {
+  const x = obj.x;
+  const y = (obj.baseY + H) % H;
+  const twinkle = 0.5 + 0.5 * Math.sin(t * 3 + obj.phase);
+  ctx.globalAlpha = twinkle;
+  ctx.fillStyle = '#FFF';
+  ctx.beginPath();
+  ctx.arc(x, y, obj.size, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = 1;
+}
+
+function drawSatellite(obj, t) {
+  const x = ((obj.x + t * obj.speed) % (W + 60)) - 30;
+  const y = H * 0.1 + obj.baseY * 0.15 + Math.sin(t * 0.2 + obj.phase) * 20;
+  // Body
+  ctx.fillStyle = '#B0B0B0';
+  ctx.fillRect(x - 4, y - 3, 8, 6);
+  // Solar panels
+  ctx.fillStyle = '#4488CC';
+  ctx.fillRect(x - 14, y - 2, 10, 4);
+  ctx.fillRect(x + 4, y - 2, 10, 4);
+  // Antenna
+  ctx.strokeStyle = '#999';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(x, y - 3);
+  ctx.lineTo(x, y - 8);
+  ctx.stroke();
+  ctx.fillStyle = '#FF4444';
+  ctx.beginPath();
+  ctx.arc(x, y - 8, 1.5, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// ============================================================
+// DRAW — Game Elements
+// ============================================================
+function drawGround() {
+  const floors = floorCount();
+  if (floors > 10) return; // ground not visible above zone 0
+
+  // Ground only visible in low zone
+  const groundScreenY = getGroundScreenY();
+  if (groundScreenY > H) return;
+
+  ctx.fillStyle = '#8B7355';
+  ctx.fillRect(0, groundScreenY, W, H - groundScreenY + 10);
+  ctx.fillStyle = '#6BCB77';
+  ctx.fillRect(0, groundScreenY, W, 5);
+}
+
+function getGroundScreenY() {
+  // Ground is at world Y = tower[0].y + BS + some offset
+  // But simpler: ground is below base block
+  const base = tower[0];
+  if (!base) return H;
+  return (base.y + BS + 20) - camera.y + shake.y;
+}
+
+function drawTower() {
+  if (tower.length === 0) return;
+
+  const base = tower[0];
+  const pivotX = base.x + BS / 2;
+  const pivotY = base.y + BS; // bottom of base block
+
+  ctx.save();
+
+  // Apply wobble rotation from base of tower
+  if (Math.abs(wobble.angle) > 0.001) {
+    ctx.translate(pivotX + shake.x, pivotY - camera.y + shake.y);
+    ctx.rotate(wobble.angle);
+    ctx.translate(-pivotX, -(pivotY - camera.y));
+  } else {
+    ctx.translate(shake.x, 0);
+  }
+
+  // Draw each block
+  for (const block of tower) {
+    const bx = block.x;
+    const by = block.y - camera.y;
+    ctx.fillStyle = block.color;
+    ctx.fillRect(bx, by, BS, BS);
+    // Bottom shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.15)';
+    ctx.fillRect(bx, by + BS - 3, BS, 3);
+    // Top highlight
+    ctx.fillStyle = 'rgba(255,255,255,0.25)';
+    ctx.fillRect(bx, by, BS, 2);
+    // Perfect glow
+    if (block.perfect && !block.isBase) {
+      ctx.fillStyle = 'rgba(255,215,0,0.12)';
+      ctx.fillRect(bx, by, BS, BS);
+    }
+  }
+
+  ctx.restore();
+}
+
+function drawCrane() {
+  if (state !== STATES.PLAYING) return;
+
+  const { angle, blockX, blockY } = getSwingState();
+
+  // Crane arm (may be off-screen, that's OK)
+  const armScreenY = crane.pivotY - 10 - camera.y + shake.y;
+  ctx.fillStyle = CFG.craneColor;
+  ctx.fillRect(0, armScreenY - 5, W, 10);
+
+  // Crane arm detail (vertical support at right)
+  ctx.fillRect(W - 20, armScreenY - 30, 12, 35);
+
+  // Cable with stretch
+  const stretch = crane.stretch || 0;
+  const cl = (crane.cableLength || 140) + stretch;
+  const hookX = crane.pivotX + Math.sin(angle) * cl;
+  const hookY = crane.pivotY + Math.cos(angle) * cl;
+
+  // Draw cable
+  ctx.strokeStyle = CFG.cableColor;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(crane.pivotX + shake.x, crane.pivotY - camera.y + shake.y);
+  ctx.lineTo(hookX + shake.x, hookY - camera.y + shake.y);
+  ctx.stroke();
+
+  // Hook
+  ctx.fillStyle = CFG.hookColor;
+  ctx.beginPath();
+  ctx.arc(hookX + shake.x, hookY - camera.y + shake.y, 4, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Block — rigidly attached to cable, tilts with it
+  const color = blockColor(tower.length);
+  ctx.globalAlpha = 0.95;
+  ctx.fillStyle = color;
+
+  const bx = blockX + shake.x;
+  const by = blockY - camera.y + shake.y;
+
+  // Rotate block around its top-center (hook attachment point)
+  ctx.save();
+  ctx.translate(hookX + shake.x, hookY - camera.y + shake.y);
+  ctx.rotate(-angle); // tilt with cable (negated for canvas coords)
+  // Block hangs below hook, centered horizontally
+  ctx.fillRect(-BS / 2, 0, BS, BS);
+  // Bottom shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.12)';
+  ctx.fillRect(-BS / 2, BS - 3, BS, 3);
+  // Top highlight
+  ctx.fillStyle = 'rgba(255,255,255,0.2)';
+  ctx.fillRect(-BS / 2, 0, BS, 2);
+  ctx.restore();
+
+  ctx.globalAlpha = 1;
+}
+
+function drawFallingBlock() {
+  if (!fallingBlock) return;
+  const bx = fallingBlock.x + shake.x;
+  const by = fallingBlock.y - camera.y + shake.y;
+  ctx.fillStyle = fallingBlock.color;
+  ctx.fillRect(bx, by, BS, BS);
+  ctx.fillStyle = 'rgba(0,0,0,0.15)';
+  ctx.fillRect(bx, by + BS - 3, BS, 3);
+  ctx.fillStyle = 'rgba(255,255,255,0.2)';
+  ctx.fillRect(bx, by, BS, 2);
+}
+
+function drawDebris() {
+  for (const d of debris) {
+    ctx.save();
+    const dx = d.x + BS/2 + shake.x;
+    const dy = d.y + BS/2 - camera.y + shake.y;
+    ctx.translate(dx, dy);
+    ctx.rotate(d.rot);
+    ctx.globalAlpha = 0.7;
+    ctx.fillStyle = d.color;
+    ctx.fillRect(-BS/2, -BS/2, BS, BS);
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+}
+
+function drawParticles() {
+  for (const p of particles) p.draw(ctx);
+}
+
+function drawFloatTexts() {
+  for (const ft of floatTexts) {
+    const alpha = clamp(ft.life / ft.maxLife, 0, 1);
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = ft.color;
+    ctx.font = `bold ${ft.size}px 'Fredoka One', 'Segoe UI', system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.shadowColor = 'rgba(0,0,0,0.4)';
+    ctx.shadowBlur = 3;
+    ctx.fillText(ft.text, ft.x + shake.x, ft.y - camera.y + shake.y);
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = 1;
+  }
+  ctx.textAlign = 'left';
+}
+
+function drawHUD() {
+  ctx.shadowColor = 'rgba(0,0,0,0.5)';
+  ctx.shadowBlur = 4;
+
+  // Score
+  ctx.fillStyle = '#FFFFFF';
+  ctx.font = "bold 26px 'Fredoka One', 'Segoe UI', system-ui, sans-serif";
+  ctx.textAlign = 'left';
+  ctx.fillText(`${score}`, 16, 36);
+
+  // Floors
+  ctx.font = "14px 'Nunito', 'Segoe UI', system-ui, sans-serif";
+  ctx.fillStyle = 'rgba(255,255,255,0.7)';
+  ctx.fillText(`${floorCount()} floors`, 16, 54);
+
+  // Lives (top center)
+  ctx.textAlign = 'center';
+  ctx.font = "20px sans-serif";
+  let livesStr = '';
+  for (let i = 0; i < CFG.maxLives; i++) {
+    livesStr += i < lives ? '❤️' : '🖤';
+  }
+  ctx.fillText(livesStr, W / 2, 36);
+
+  // Combo
+  if (combo > 0) {
+    ctx.textAlign = 'right';
+    ctx.font = `bold ${18 + combo}px 'Fredoka One', 'Segoe UI', system-ui, sans-serif`;
+    ctx.fillStyle = '#FFD700';
+    ctx.fillText(`×${combo + 1}`, W - 16, 36);
+  }
+
+  // Hint
+  if (state === STATES.PLAYING && hintOpacity > 0) {
+    ctx.globalAlpha = hintOpacity;
+    ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.font = "18px 'Fredoka One', 'Segoe UI', system-ui, sans-serif";
+    ctx.fillText('TAP TO DROP', W/2, H * 0.5);
+    ctx.globalAlpha = 1;
+  }
+
+  ctx.shadowBlur = 0;
+  ctx.textAlign = 'left';
+}
+
+// ============================================================
+// DRAW — Screens
+// ============================================================
+function drawMenu() {
+  // Sky bg
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, '#4FC3F7');
+  grad.addColorStop(1, '#E1F5FE');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Clouds
+  const t = Date.now() / 1000;
+  ctx.fillStyle = 'rgba(255,255,255,0.4)';
+  for (let i = 0; i < 5; i++) {
+    const cx = ((i * 120 + t * 8 + i * 37) % (W + 100)) - 50;
+    const cy = 60 + i * 40 + Math.sin(t * 0.3 + i) * 10;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 20, 0, Math.PI*2);
+    ctx.arc(cx + 18, cy - 4, 15, 0, Math.PI*2);
+    ctx.arc(cx - 14, cy + 3, 12, 0, Math.PI*2);
+    ctx.fill();
+  }
+
+  const bounce = Math.sin(menuAnim * 3) * 3;
+  const titleY = H * 0.22 + bounce;
+
+  ctx.textAlign = 'center';
+  ctx.font = "48px sans-serif";
+  ctx.fillText('🏗️', W/2, titleY - 40);
+
+  ctx.fillStyle = '#FFFFFF';
+  ctx.shadowColor = 'rgba(0,0,0,0.3)';
+  ctx.shadowBlur = 6;
+  ctx.font = "bold 40px 'Fredoka One', 'Segoe UI', system-ui, sans-serif";
+  ctx.fillText('TOWER', W/2, titleY);
+  ctx.fillText('STACK', W/2, titleY + 46);
+  ctx.shadowBlur = 0;
+
+  const data = Storage.load();
+  if (data.highScore > 0) {
+    ctx.fillStyle = 'rgba(255,255,255,0.6)';
+    ctx.font = "16px 'Nunito', 'Segoe UI', system-ui, sans-serif";
+    ctx.fillText(`Best: ${data.highScore}`, W/2, titleY + 80);
+  }
+
+  buttons = [];
+  const btnW = 220, btnH = 52;
+  drawButton(W/2, H * 0.56, btnW, btnH, '▶  PLAY', 'primary');
+  addButton('PLAY', W/2, H * 0.56, btnW, btnH, () => startGame(), 'primary');
+
+  drawButton(W/2, H * 0.66, btnW, btnH, '🏙  MY CITY', 'secondary');
+  addButton('CITY', W/2, H * 0.66, btnW, btnH, () => {
+    state = STATES.CITY_VIEW; cityScrollX = 0;
+  }, 'secondary');
+
+  drawButton(W/2, H * 0.76, btnW, btnH, '⚙  SETTINGS', 'secondary');
+  addButton('SETTINGS', W/2, H * 0.76, btnW, btnH, () => {
+    state = STATES.SETTINGS; initSettingsForm();
+  }, 'secondary');
+
+  // Ground on menu
+  ctx.fillStyle = '#8B7355';
+  ctx.fillRect(0, H * 0.82, W, H * 0.18);
+  ctx.fillStyle = '#6BCB77';
+  ctx.fillRect(0, H * 0.82, W, 5);
+
+  ctx.textAlign = 'left';
+}
+
+function drawGameOver() {
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  ctx.fillRect(0, 0, W, H);
+
+  const cardW = 280, cardH = 340;
+  const cardX = W/2 - cardW/2, cardY = H/2 - cardH/2;
+  const slideUp = Math.min(1, gameOverTimer * 3);
+
+  ctx.save();
+  ctx.translate(0, (1 - slideUp) * 100);
+
+  ctx.fillStyle = '#FFFFFF';
+  ctx.shadowColor = 'rgba(0,0,0,0.2)';
+  ctx.shadowBlur = 20;
+  roundRect(cardX, cardY, cardW, cardH, 16);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#1A1A2E';
+  ctx.font = "bold 28px 'Fredoka One', 'Segoe UI', system-ui, sans-serif";
+  ctx.fillText('GAME OVER', W/2, cardY + 45);
+
+  ctx.font = "18px 'Nunito', 'Segoe UI', system-ui, sans-serif";
+  ctx.fillStyle = '#546E7A';
+  ctx.fillText(`🏗 Height: ${floorCount()}`, W/2, cardY + 90);
+  ctx.fillText(`⭐ Score: ${score}`, W/2, cardY + 120);
+  ctx.fillText(`🔥 Best combo: ×${bestCombo}`, W/2, cardY + 150);
+
+  const data = Storage.load();
+  if (data.highScore > 0) {
+    ctx.fillStyle = '#FFD700';
+    ctx.font = "bold 16px 'Nunito', 'Segoe UI', system-ui, sans-serif";
+    ctx.fillText(`🏆 High Score: ${data.highScore}`, W/2, cardY + 185);
+  }
+
+  const btnW = 200, btnH = 44;
+  const retryY = cardY + 230;
+  const cityBtnY = cardY + 290;
+
+  drawButton(W/2, retryY, btnW, btnH, '▶  RETRY', 'primary');
+  drawButton(W/2, cityBtnY, btnW, btnH, '🏙  MY CITY', 'secondary');
+
+  ctx.restore();
+
+  buttons = [];
+  addButton('RETRY', W/2, cardY + 230, btnW, btnH, () => startGame(), 'primary');
+  addButton('CITY', W/2, cardY + 290, btnW, btnH, () => {
+    state = STATES.CITY_VIEW; cityScrollX = 0;
+  }, 'secondary');
+  ctx.textAlign = 'left';
+}
+
+function drawCityView() {
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, '#2C3E50');
+  grad.addColorStop(1, '#1A252F');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Stars
+  const t = Date.now() / 1000;
+  ctx.fillStyle = '#FFF';
+  for (let i = 0; i < 40; i++) {
+    const sx = (i * 47 + Math.sin(i * 3.7) * 100) % W;
+    const sy = (i * 31 + Math.cos(i * 2.3) * 80) % (H * 0.6);
+    const twinkle = 0.3 + 0.7 * Math.sin(t * 2 + i);
+    ctx.globalAlpha = twinkle;
+    ctx.beginPath();
+    ctx.arc(sx, sy, 1 + (i % 3), 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#FFFFFF';
+  ctx.shadowColor = 'rgba(0,0,0,0.3)';
+  ctx.shadowBlur = 4;
+  ctx.font = "bold 28px 'Fredoka One', 'Segoe UI', system-ui, sans-serif";
+  ctx.fillText('MY CITY', W/2, 50);
+  ctx.shadowBlur = 0;
+
+  const data = Storage.load();
+  const towers = data.towers || [];
+
+  if (towers.length === 0) {
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.font = "18px 'Nunito', 'Segoe UI', system-ui, sans-serif";
+    ctx.fillText('Build your first tower!', W/2, H * 0.4);
+    ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([5, 5]);
+    ctx.strokeRect(W/2 - 25, H * 0.48, 50, 100);
+    ctx.setLineDash([]);
+  } else {
+    const sorted = [...towers].sort((a, b) => a.height - b.height);
+    const maxH = Math.max(...sorted.map(t => t.height));
+    const groundY = H * 0.82;
+    const towerSpacing = 70;
+    const startX = 40 - cityScrollX;
+
+    ctx.fillStyle = '#2A3A4A';
+    ctx.fillRect(0, groundY, W, H - groundY);
+    ctx.fillStyle = '#3A4A5A';
+    ctx.fillRect(0, groundY, W, 3);
+
+    sorted.forEach((tw, i) => {
+      const tx = startX + i * towerSpacing;
+      if (tx > W + 50 || tx < -80) return;
+      const maxDrawH = H * 0.6;
+      const th = Math.max(20, (tw.height / Math.max(maxH, 1)) * maxDrawH);
+      const tWidth = 45;
+      const color = CFG.blockColors[i % CFG.blockColors.length];
+
+      ctx.fillStyle = color;
+      ctx.fillRect(tx, groundY - th, tWidth, th);
+      ctx.fillStyle = 'rgba(0,0,0,0.15)';
+      ctx.fillRect(tx + tWidth - 5, groundY - th, 5, th);
+      ctx.fillStyle = 'rgba(255,255,255,0.15)';
+      ctx.fillRect(tx, groundY - th, tWidth, 2);
+
+      ctx.fillStyle = 'rgba(255,255,200,0.3)';
+      for (let wy = groundY - th + 12; wy < groundY - 6; wy += 12) {
+        for (let wx = tx + 7; wx < tx + tWidth - 7; wx += 12) {
+          ctx.fillRect(wx, wy, 5, 5);
+        }
+      }
+
+      ctx.fillStyle = '#FFF';
+      ctx.font = "bold 11px 'Nunito', 'Segoe UI', system-ui, sans-serif";
+      ctx.textAlign = 'center';
+      ctx.fillText(`${tw.height}`, tx + tWidth/2, groundY - th - 6);
+    });
+  }
+
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.font = "14px 'Nunito', 'Segoe UI', system-ui, sans-serif";
+  ctx.textAlign = 'center';
+  ctx.fillText(`Towers: ${data.totalTowers}  |  Highest: ${data.highestTower}`, W/2, H - 95);
+
+  buttons = [];
+  drawButton(W/2 - 55, H - 55, 100, 42, '← BACK', 'secondary');
+  drawButton(W/2 + 55, H - 55, 100, 42, '▶ PLAY', 'primary');
+  addButton('BACK', W/2 - 55, H - 55, 100, 42, () => { state = STATES.MENU; }, 'secondary');
+  addButton('PLAY', W/2 + 55, H - 55, 100, 42, () => startGame(), 'primary');
+
+  ctx.textAlign = 'left';
+}
+
+function drawButton(cx, cy, w, h, label, style) {
+  const x = cx - w/2, y = cy - h/2;
+  ctx.fillStyle = style === 'primary' ? '#4D96FF' : '#FF6B6B';
+  ctx.shadowColor = 'rgba(0,0,0,0.15)';
+  ctx.shadowBlur = 8;
+  roundRect(x, y, w, h, 14);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = '#FFFFFF';
+  ctx.font = "bold 17px 'Fredoka One', 'Segoe UI', system-ui, sans-serif";
+  ctx.textAlign = 'center';
+  ctx.fillText(label, cx, cy + 5);
+  ctx.textAlign = 'left';
+}
+
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+function addButton(label, cx, cy, w, h, action, style) {
+  buttons.push({ label, cx, cy, w, h, action, style });
+}
+
+// ============================================================
+// MAIN LOOP
+// ============================================================
+function tick(timestamp) {
+  const dt = Math.min((timestamp - lastTime) / 1000, 1/30);
+  lastTime = timestamp;
+
+  update(dt);
+
+  ctx.clearRect(0, 0, W, H);
+  buttons = [];
+
+  switch (state) {
+    case STATES.MENU:
+      drawMenu();
+      break;
+
+    case STATES.PLAYING:
+    case STATES.DROPPING:
+      drawBackground();
+      drawGround();
+      drawTower();
+      drawDebris();
+      drawCrane();
+      drawFallingBlock();
+      drawParticles();
+      drawFloatTexts();
+      drawHUD();
+      break;
+
+    case STATES.GAME_OVER:
+      drawBackground();
+      drawGround();
+      drawTower();
+      drawDebris();
+      drawParticles();
+      drawFloatTexts();
+      drawHUD();
+      drawGameOver();
+      break;
+
+    case STATES.CITY_VIEW:
+      drawCityView();
+      break;
+
+    case STATES.SETTINGS:
+      // Settings form is HTML overlay, just draw bg
+      drawSettingsBg();
+      break;
+  }
+
+  requestAnimationFrame(tick);
+}
+
+lastTime = performance.now();
+requestAnimationFrame(tick);
+
+// ============================================================
+// SETTINGS SCREEN
+// ============================================================
+const SETTINGS_DEFS = [
+  { key: 'blockSize', label: 'Block Size (px)', type: 'number', min: 20, max: 200, step: 5 },
+  { key: 'swingSpeed', label: 'Swing Speed (rad/s)', type: 'number', min: 0.5, max: 10, step: 0.1 },
+  { key: 'maxAngleMax', label: 'Max Swing Angle (°)', type: 'number', min: 5, max: 60, step: 1, toRad: true },
+  { key: 'maxAngleStart', label: 'Start Swing Angle (°)', type: 'number', min: 0.5, max: 10, step: 0.5, toRad: true },
+  { key: 'cableLength', label: 'Cable Length (px)', type: 'number', min: 50, max: 1000, step: 10, isExpr: true },
+  { key: 'cableStretchFactor', label: 'Cable Stretch %', type: 'number', min: 0, max: 0.2, step: 0.005 },
+  { key: 'cableStiffness', label: 'Cable Spring Stiffness', type: 'number', min: 1, max: 100, step: 1 },
+  { key: 'cableStretchDamping', label: 'Cable Spring Damping', type: 'number', min: 1, max: 30, step: 0.5 },
+  { key: 'gravity', label: 'Gravity (px/s²)', type: 'number', min: 500, max: 5000, step: 100 },
+  { key: 'missOverlapRatio', label: 'Miss Overlap Ratio', type: 'number', min: 0.1, max: 0.5, step: 0.05 },
+  { key: 'maxLives', label: 'Lives', type: 'number', min: 1, max: 10, step: 1 },
+  { key: 'perfectTolerance', label: 'Perfect Tolerance (px)', type: 'number', min: 1, max: 30, step: 1 },
+  { key: 'visibleBlocks', label: 'Visible Blocks', type: 'number', min: 2, max: 10, step: 0.5 },
+  { key: 'cameraLerp', label: 'Camera Smooth', type: 'number', min: 1, max: 15, step: 0.5 },
+  { key: 'wobbleHeightFactor', label: 'Wobble Height Factor', type: 'number', min: 0.005, max: 0.1, step: 0.005 },
+  { key: 'wobbleSpringK', label: 'Wobble Spring K', type: 'number', min: 1, max: 20, step: 0.5 },
+  { key: 'wobbleDamping', label: 'Wobble Damping', type: 'number', min: 0.1, max: 5, step: 0.1 },
+];
+
+function getSettingsOverlay() {
+  return document.getElementById('settings-overlay');
+}
+
+function initSettingsForm() {
+  const overlay = getSettingsOverlay();
+  overlay.style.display = 'flex';
+  const form = document.getElementById('settings-form');
+  form.innerHTML = '';
+
+  for (const def of SETTINGS_DEFS) {
+    const row = document.createElement('div');
+    row.className = 'srow';
+    const label = document.createElement('label');
+    label.textContent = def.label;
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.min = def.min;
+    input.max = def.max;
+    input.step = def.step;
+    input.dataset.key = def.key;
+    // Get current value from CFG
+    let val = CFG[def.key];
+    // For cableLength, show the numeric value
+    if (def.key === 'cableLength') val = crane.cableLength || CFG.blockSize * 4;
+    // For angle params, convert radians → degrees for display
+    if (def.toRad) val = val * 180 / Math.PI;
+    input.value = parseFloat(val.toFixed(2));
+    row.appendChild(label);
+    row.appendChild(input);
+    form.appendChild(row);
+  }
+}
+
+function applySettings() {
+  const form = document.getElementById('settings-form');
+  const inputs = form.querySelectorAll('input');
+  for (const input of inputs) {
+    const key = input.dataset.key;
+    let val = parseFloat(input.value);
+    if (isNaN(val)) continue;
+    // Convert degrees → radians for angle params
+    const def = SETTINGS_DEFS.find(d => d.key === key);
+    if (def && def.toRad) val = val * Math.PI / 180;
+    CFG[key] = val;
+  }
+  // Recompute derived values
+  BS = CFG.blockSize;
+  // Update BS shortcut isn't needed since BS is const, but game uses CFG.blockSize directly in many places
+  // cableLength is now a direct number
+  closeSettings();
+  startGame();
+}
+
+function closeSettings() {
+  const overlay = getSettingsOverlay();
+  overlay.style.display = 'none';
+  state = STATES.MENU;
+}
+
+function drawSettingsBg() {
+  // Dim background
+  ctx.fillStyle = '#E1F5FE';
+  ctx.fillRect(0, 0, W, H);
+}
+</script>
+
+<div id="settings-overlay" style="display:none; position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:100; flex-direction:column; align-items:center; justify-content:flex-start; overflow-y:auto; padding:10px 0;">
+  <div style="width:90%; max-width:400px; background:#fff; border-radius:16px; padding:16px; margin-top:10px; max-height:85vh; overflow-y:auto;">
+    <h3 style="margin:0 0 12px 0; text-align:center; font-family:sans-serif; color:#333;">⚙ Game Settings</h3>
+    <div id="settings-form"></div>
+    <div style="display:flex; gap:10px; margin-top:16px;">
+      <button onclick="applySettings()" style="flex:1; padding:12px; border:none; border-radius:10px; background:#4D96FF; color:#fff; font-size:16px; font-weight:bold; cursor:pointer;">▶ Apply & Restart</button>
+      <button onclick="closeSettings()" style="flex:1; padding:12px; border:none; border-radius:10px; background:#FF6B6B; color:#fff; font-size:16px; font-weight:bold; cursor:pointer;">✕ Cancel</button>
+    </div>
+  </div>
+</div>
+
+<style>
+  #settings-form .srow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    gap: 8px;
+  }
+  #settings-form .srow label {
+    font-size: 13px;
+    color: #555;
+    flex: 1;
+    font-family: sans-serif;
+  }
+  #settings-form .srow input {
+    width: 90px;
+    padding: 6px 8px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    font-size: 14px;
+    text-align: right;
+    font-family: monospace;
+  }
+  #settings-form .srow input:focus {
+    border-color: #4D96FF;
+    outline: none;
+  }
+</style>
+
+</body>
+</html>
