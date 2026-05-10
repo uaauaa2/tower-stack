@@ -352,12 +352,24 @@ function dropBlock() {
   hintOpacity = 0;
 }
 
+function getWobblePivot() {
+  // Same pivot used for visual wobble rotation (drawTower)
+  if (tower.length === 0) return null;
+  const base = tower[0];
+  return { x: base.x + BS / 2, y: base.y + BS }; // base center bottom
+}
+
 function landBlock() {
   const fb = fallingBlock;
   const top = getTowerTop();
   if (!top) { missBlock(); return; }
 
-  // Calculate overlap
+  // Calculate overlap in world coordinates.
+  // The falling block is now drawn in wobble space (drawFallingBlock),
+  // so the player sees accurate alignment. At the moment of collision
+  // (fb.y + BS ≈ top.y), the Y positions are nearly identical, so the
+  // wobble rotation affects both block and tower top almost equally.
+  // The residual error is BS × sin(wobble.angle) ≈ 2-3px at most.
   const oL = Math.max(fb.x, top.x);
   const oR = Math.min(fb.x + BS, top.x + BS);
   const overlapW = oR - oL;
@@ -1159,14 +1171,32 @@ function drawCrane() {
 
 function drawFallingBlock() {
   if (!fallingBlock) return;
-  const bx = fallingBlock.x + shake.x;
-  const by = fallingBlock.y - camera.y + shake.y;
-  ctx.fillStyle = fallingBlock.color;
-  ctx.fillRect(bx, by, BS, BS);
-  ctx.fillStyle = 'rgba(0,0,0,0.15)';
-  ctx.fillRect(bx, by + BS - 3, BS, 3);
-  ctx.fillStyle = 'rgba(255,255,255,0.2)';
-  ctx.fillRect(bx, by, BS, 2);
+  const pivot = getWobblePivot();
+  if (pivot && Math.abs(wobble.angle) > 0.0001) {
+    // Draw falling block in wobble space so it visually aligns with the wobbled tower
+    ctx.save();
+    ctx.translate(pivot.x + shake.x, pivot.y - camera.y + shake.y);
+    ctx.rotate(wobble.angle);
+    ctx.translate(-pivot.x, -(pivot.y - camera.y));
+    const bx = fallingBlock.x + shake.x;
+    const by = fallingBlock.y - camera.y + shake.y;
+    ctx.fillStyle = fallingBlock.color;
+    ctx.fillRect(bx, by, BS, BS);
+    ctx.fillStyle = 'rgba(0,0,0,0.15)';
+    ctx.fillRect(bx, by + BS - 3, BS, 3);
+    ctx.fillStyle = 'rgba(255,255,255,0.2)';
+    ctx.fillRect(bx, by, BS, 2);
+    ctx.restore();
+  } else {
+    const bx = fallingBlock.x + shake.x;
+    const by = fallingBlock.y - camera.y + shake.y;
+    ctx.fillStyle = fallingBlock.color;
+    ctx.fillRect(bx, by, BS, BS);
+    ctx.fillStyle = 'rgba(0,0,0,0.15)';
+    ctx.fillRect(bx, by + BS - 3, BS, 3);
+    ctx.fillStyle = 'rgba(255,255,255,0.2)';
+    ctx.fillRect(bx, by, BS, 2);
+  }
 }
 
 function drawDebris() {
