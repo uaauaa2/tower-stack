@@ -44,6 +44,10 @@ const CFG = {
   // Physics
   gravity: 2000,
 
+  // Falling block rotation physics
+  fallRestoringSpring: 12, // torque pulling block upright
+  fallAngularDamping: 4,   // air resistance on rotation
+
   // Miss threshold: < 30% overlap = miss
   missOverlapRatio: 0.3,
 
@@ -339,14 +343,31 @@ function getSwingState() {
 
 function dropBlock() {
   if (state !== STATES.PLAYING) return;
-  const { blockX, blockY, vx } = getSwingState();
+  const { angle, vx, cl } = getSwingState();
+
+  // Hook position (attachment point)
+  const hookX = crane.pivotX + Math.sin(angle) * cl;
+  const hookY = crane.pivotY + Math.cos(angle) * cl;
+
+  // Block center when rotated around hook by -angle:
+  //   In local coords (relative to hook), center = (0, BS/2)
+  //   After rotation R(-angle): (BS/2·sin(angle), BS/2·cos(angle))
+  //   World: hook + rotated offset
+  const blockCenterX = hookX + (BS / 2) * Math.sin(angle);
+  const blockCenterY = hookY + (BS / 2) * Math.cos(angle);
+
+  // Small spin inherited from swing deceleration
+  const angularVelFromSwing = -vx / cl * 0.3;
 
   fallingBlock = {
-    x: blockX, y: blockY,
+    x: blockCenterX - BS / 2,
+    y: blockCenterY - BS / 2,
     width: BS, height: BS,
     color: blockColor(tower.length),
-    vx: vx, // horizontal inertia from swing
-    vy: 0
+    vx: vx,
+    vy: 0,
+    rotation: -angle,
+    angularVel: angularVelFromSwing,
   };
   state = STATES.DROPPING;
   hintOpacity = 0;
@@ -478,13 +499,14 @@ function landBlock() {
 
 function missBlock(fb) {
   if (fb) {
-    // Create falling debris
+    // Create falling debris — inherit rotation from falling block
     const dir = fb.x + BS/2 < W/2 ? -1 : 1;
+    const curRot = fb.rotation || 0;
     debris.push({
       x: fb.x, y: fb.y, width: BS, height: BS,
       color: fb.color,
       vx: dir * (80 + Math.abs(fb.vx)), vy: -50,
-      rot: 0, vr: dir * (3 + Math.random() * 3)
+      rot: curRot, vr: dir * (3 + Math.random() * 3)
     });
   }
 
@@ -704,11 +726,21 @@ function update(dt) {
     crane.stretch = clamp(crane.stretch, -maxStretch * 0.2, maxStretch);
   }
 
-  // Falling block with inertia
+  // Falling block with inertia + rotation physics
   if (state === STATES.DROPPING && fallingBlock) {
     fallingBlock.vy += CFG.gravity * dt;
     fallingBlock.x += fallingBlock.vx * dt; // horizontal inertia
     fallingBlock.y += fallingBlock.vy * dt;
+
+    // Rotation physics:
+    // 1) Restoring torque — block's center of mass pulls it toward upright
+    //    (simulates gravity pulling the heavy bottom down)
+    const restoringTorque = -fallingBlock.rotation * CFG.fallRestoringSpring;
+    // 2) Air resistance damping on angular velocity
+    const angularDamping = -fallingBlock.angularVel * CFG.fallAngularDamping;
+    // Apply torques
+    fallingBlock.angularVel += (restoringTorque + angularDamping) * dt;
+    fallingBlock.rotation += fallingBlock.angularVel * dt;
 
     // Keep block on screen horizontally
     fallingBlock.x = clamp(fallingBlock.x, -BS, W);
@@ -1171,32 +1203,30 @@ function drawCrane() {
 
 function drawFallingBlock() {
   if (!fallingBlock) return;
-  const pivot = getWobblePivot();
-  if (pivot && Math.abs(wobble.angle) > 0.0001) {
-    // Draw falling block in wobble space so it visually aligns with the wobbled tower
-    ctx.save();
-    ctx.translate(pivot.x + shake.x, pivot.y - camera.y + shake.y);
-    ctx.rotate(wobble.angle);
-    ctx.translate(-pivot.x, -(pivot.y - camera.y));
-    const bx = fallingBlock.x + shake.x;
-    const by = fallingBlock.y - camera.y + shake.y;
-    ctx.fillStyle = fallingBlock.color;
-    ctx.fillRect(bx, by, BS, BS);
-    ctx.fillStyle = 'rgba(0,0,0,0.15)';
-    ctx.fillRect(bx, by + BS - 3, BS, 3);
-    ctx.fillStyle = 'rgba(255,255,255,0.2)';
-    ctx.fillRect(bx, by, BS, 2);
-    ctx.restore();
-  } else {
-    const bx = fallingBlock.x + shake.x;
-    const by = fallingBlock.y - camera.y + shake.y;
-    ctx.fillStyle = fallingBlock.color;
-    ctx.fillRect(bx, by, BS, BS);
-    ctx.fillStyle = 'rgba(0,0,0,0.15)';
-    ctx.fillRect(bx, by + BS - 3, BS, 3);
-    ctx.fillStyle = 'rgba(255,255,255,0.2)';
-    ctx.fillRect(bx, by, BS, 2);
-  }
+  const rot = fallingBlock.rotation || 0;
+
+  // Block is in the air — NOT part of the tower, so no wobble transform.
+  // Draw in world space (with shake only) for consistent physics↔visual alignment.
+  ctx.save();
+  ctx.translate(shake.x, 0);
+
+  const bx = fallingBlock.x + BS / 2;
+  const by = fallingBlock.y + BS / 2 - camera.y;
+
+  // Rotate block around its center
+  ctx.translate(bx, by);
+  ctx.rotate(rot);
+
+  ctx.fillStyle = fallingBlock.color;
+  ctx.fillRect(-BS / 2, -BS / 2, BS, BS);
+  // Bottom shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.15)';
+  ctx.fillRect(-BS / 2, BS / 2 - 3, BS, 3);
+  // Top highlight
+  ctx.fillStyle = 'rgba(255,255,255,0.2)';
+  ctx.fillRect(-BS / 2, -BS / 2, BS, 2);
+
+  ctx.restore();
 }
 
 function drawDebris() {
@@ -1610,6 +1640,8 @@ const SETTINGS_DEFS = [
   { key: 'wobbleHeightFactor', label: 'Wobble Height Factor', type: 'number', min: 0.005, max: 0.1, step: 0.005 },
   { key: 'wobbleSpringK', label: 'Wobble Spring K', type: 'number', min: 1, max: 20, step: 0.5 },
   { key: 'wobbleDamping', label: 'Wobble Damping', type: 'number', min: 0.1, max: 5, step: 0.1 },
+  { key: 'fallRestoringSpring', label: 'Fall Restoring Spring', type: 'number', min: 1, max: 40, step: 1 },
+  { key: 'fallAngularDamping', label: 'Fall Angular Damping', type: 'number', min: 0.5, max: 15, step: 0.5 },
 ];
 
 function getSettingsOverlay() {

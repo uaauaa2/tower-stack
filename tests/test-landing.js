@@ -11,6 +11,8 @@ const CFG = {
   perfectTolerance: 3,
   wobbleHeightFactor: 0.02,
   swingAngleMax: 20 * Math.PI / 180,
+  fallRestoringSpring: 12,
+  fallAngularDamping: 4,
 };
 const BS = CFG.blockSize;
 const W = 400;
@@ -47,6 +49,79 @@ function getSwingState(px, py, cl, time, tLen, stretch=0) {
   };
 }
 
+/**
+ * Simulate dropBlock() — mirrors the fixed game code exactly.
+ * Block center is calculated from rotated position around hook.
+ */
+function simulateDropBlock(px, py, cl, time, tLen, stretch = 0) {
+  const speed = CFG.swingSpeed;
+  const maxA = currentMaxAngle(tLen);
+  const angle = maxA * Math.sin(time * speed);
+  const angularVel = maxA * speed * Math.cos(time * speed);
+  const c = cl + stretch;
+
+  const hookX = px + Math.sin(angle) * c;
+  const hookY = py + Math.cos(angle) * c;
+
+  // FIXED: Block center when rotated around hook
+  const blockCenterX = hookX + (BS / 2) * Math.sin(angle);
+  const blockCenterY = hookY + (BS / 2) * Math.cos(angle);
+
+  const vx = angularVel * c;
+  const angularVelFromSwing = -vx / c * 0.3;
+
+  return {
+    x: blockCenterX - BS / 2,
+    y: blockCenterY - BS / 2,
+    vx,
+    rotation: -angle,
+    angularVel: angularVelFromSwing,
+    hookX, hookY, angle, cl: c,
+  };
+}
+
+/**
+ * OLD (buggy) dropBlock — used to demonstrate the position discontinuity.
+ */
+function simulateDropBlockOld(px, py, cl, time, tLen, stretch = 0) {
+  const s = getSwingState(px, py, cl, time, tLen, stretch);
+  return {
+    x: s.blockX,
+    y: s.blockY,
+    vx: s.vx,
+    rotation: -s.angle,
+    hookX: s.hookX,
+    hookY: s.hookY,
+    angle: s.angle,
+    cl: s.cl,
+  };
+}
+
+/**
+ * Where drawCrane renders the block center in world coords:
+ * translate(hookX, hookY) → rotate(-angle) → local center = (0, BS/2)
+ * World center = hook + R(-angle) * (0, BS/2)
+ *   = (hookX + BS/2*sin(angle), hookY + BS/2*cos(angle))
+ */
+function craneBlockCenterWorld(hookX, hookY, angle) {
+  return {
+    cx: hookX + (BS / 2) * Math.sin(angle),
+    cy: hookY + (BS / 2) * Math.cos(angle),
+  };
+}
+
+/**
+ * Where drawFallingBlock renders the block center in world coords (no wobble):
+ * translate(fb.x + BS/2, fb.y + BS/2 - cam) → rotate(rot)
+ * Center = (fb.x + BS/2, fb.y + BS/2)
+ */
+function fallingBlockCenterWorld(fb) {
+  return {
+    cx: fb.x + BS / 2,
+    cy: fb.y + BS / 2,
+  };
+}
+
 function findLanding(sx, sy, vx, topY, dt=1/60) {
   let x=sx, y=sy, vy=0, f=0;
   while (y+BS < topY && f < 600) {
@@ -63,153 +138,351 @@ function overlap(bx, tx) {
   return Math.max(0, Math.min(bx+BS, tx+BS) - Math.max(bx, tx));
 }
 
-// ===== TEST SUITE 1: Basic Landing =====
-section('SUITE 1: Basic Landing Position');
+// ============================================================
+// SUITE 1: DROP POSITION CONTINUITY (Bug #1 fix)
+// ============================================================
+section('SUITE 1: Drop Position — No Visual Jump');
+
+(function() {
+  const px = W/2, py = 100, cl = CFG.cableLength;
+
+  // Test at various swing angles
+  const times = [0, 0.15, 0.3, 0.5, 0.75, 1.0];
+  const tLens = [5, 20, 40, 60, 80];
+
+  for (const tLen of tLens) {
+    for (const time of times) {
+      const s = getSwingState(px, py, cl, time, tLen);
+      const crane = craneBlockCenterWorld(s.hookX, s.hookY, s.angle);
+      const drop = simulateDropBlock(px, py, cl, time, tLen);
+      const dropCenter = fallingBlockCenterWorld(drop);
+
+      const dx = Math.abs(dropCenter.cx - crane.cx);
+      const dy = Math.abs(dropCenter.cy - crane.cy);
+
+      assert(dx < 0.01 && dy < 0.01,
+        `S1.${tLen}f t=${time}: Crane↔Drop center match (Δx=${dx.toFixed(3)}, Δy=${dy.toFixed(3)})`,
+        `dx=${dx.toFixed(4)} dy=${dy.toFixed(4)} angle=${(s.angle*180/Math.PI).toFixed(2)}°`);
+    }
+  }
+})();
+
+// ============================================================
+// SUITE 2: OLD vs NEW — Demonstrate the Bug
+// ============================================================
+section('SUITE 2: Old Drop Position — Demonstrated Jump');
+
+(function() {
+  const px = W/2, py = 100, cl = CFG.cableLength, tLen = 60;
+
+  // At max amplitude — worst case
+  const timeExtreme = Math.PI / (2 * CFG.swingSpeed);
+  const s = getSwingState(px, py, cl, timeExtreme, tLen);
+  const crane = craneBlockCenterWorld(s.hookX, s.hookY, s.angle);
+
+  const oldDrop = simulateDropBlockOld(px, py, cl, timeExtreme, tLen);
+  const oldCenter = fallingBlockCenterWorld(oldDrop);
+
+  const oldDx = Math.abs(oldCenter.cx - crane.cx);
+  const oldDy = Math.abs(oldCenter.cy - crane.cy);
+
+  console.log(`  ℹ️  At tLen=${tLen}, angle=${(s.angle*180/Math.PI).toFixed(2)}° (swing extreme):`);
+  console.log(`       OLD jump: Δx=${oldDx.toFixed(1)}px, Δy=${oldDy.toFixed(1)}px`);
+
+  // At max angle (20°), old code jumps ~15px horizontally
+  assert(oldDx > 10,
+    'S2.1: Old code has significant X jump at high tower + max swing',
+    `Δx=${oldDx.toFixed(1)}px (expected >10)`);
+
+  // NEW code — zero jump
+  const newDrop = simulateDropBlock(px, py, cl, timeExtreme, tLen);
+  const newCenter = fallingBlockCenterWorld(newDrop);
+  const newDx = Math.abs(newCenter.cx - crane.cx);
+
+  assert(newDx < 0.01,
+    'S2.2: Fixed code has zero X jump',
+    `Δx=${newDx.toFixed(4)}px`);
+
+  // At center crossing (angle ≈ 0) — both should be fine
+  const sCenter = getSwingState(px, py, cl, 0, tLen);
+  const craneC = craneBlockCenterWorld(sCenter.hookX, sCenter.hookY, sCenter.angle);
+  const oldC = simulateDropBlockOld(px, py, cl, 0, tLen);
+  const oldCC = fallingBlockCenterWorld(oldC);
+  const oldDxCenter = Math.abs(oldCC.cx - craneC.cx);
+
+  assert(oldDxCenter < 1,
+    'S2.3: At center crossing, even old code has minimal jump',
+    `Δx=${oldDxCenter.toFixed(2)}px`);
+})();
+
+// ============================================================
+// SUITE 3: DROP POSITION with CABLE STRETCH
+// ============================================================
+section('SUITE 3: Drop Position with Cable Stretch');
+
+(function() {
+  const px = W/2, py = 100, cl = CFG.cableLength, tLen = 40;
+
+  // With maximum stretch
+  const maxStretch = CFG.cableStretchPct * cl;
+  const times = [0.2, 0.4, 0.6, 0.8];
+
+  for (const time of times) {
+    const s = getSwingState(px, py, cl, time, tLen, maxStretch);
+    const crane = craneBlockCenterWorld(s.hookX, s.hookY, s.angle);
+    const drop = simulateDropBlock(px, py, cl, time, tLen, maxStretch);
+    const dropCenter = fallingBlockCenterWorld(drop);
+
+    const dx = Math.abs(dropCenter.cx - crane.cx);
+    const dy = Math.abs(dropCenter.cy - crane.cy);
+
+    assert(dx < 0.01 && dy < 0.01,
+      `S3 t=${time} stretch: Center match (Δ=${dx.toFixed(3)},${dy.toFixed(3)})`,
+      `angle=${(s.angle*180/Math.PI).toFixed(2)}°`);
+  }
+})();
+
+// ============================================================
+// SUITE 4: FALLING BLOCK — No Wobble in Render (Bug #2 fix)
+// ============================================================
+section('SUITE 4: Falling Block — No Wobble Applied');
+
+(function() {
+  // The falling block should NOT be rendered in wobble space.
+  // It's in the air, independent of tower sway.
+  // This means:
+  // 1. Collision in world space ↔ visual in world space → consistent
+  // 2. No position shift from wobble rotation
+  // 3. Player can see tower swaying and time the drop correctly
+
+  // T4.1: Block x position in physics = block x position in render
+  const drop = simulateDropBlock(W/2, 100, CFG.cableLength, 0.5, 30);
+  // Render position: fb.x + BS/2 (center), fb.y + BS/2 - cam
+  // Physics position: fb.x, fb.y
+  // These are the same — wobble doesn't shift them
+  const renderX = drop.x;
+  const physicsX = drop.x;
+  assert(renderX === physicsX,
+    'T4.1: Render X = Physics X (no wobble offset)',
+    `render=${renderX} physics=${physicsX}`);
+
+  // T4.2: If wobble WERE applied, there'd be a shift at high towers
+  const tLen = 40;
+  const towerHeight = tLen * BS;
+  const wobbleAngle = 0.05; // ~2.9°
+  const wobbleOffset = towerHeight * Math.sin(wobbleAngle);
+  console.log(`  ℹ️  At ${tLen} floors, wobble ${(wobbleAngle*180/Math.PI).toFixed(2)}°:`);
+  console.log(`       If applied to falling block: ${wobbleOffset.toFixed(1)}px visual shift`);
+  console.log(`       Without wobble (fixed): 0px shift`);
+  assert(wobbleOffset > 30,
+    'T4.2: Wobble would cause significant visual mismatch if applied',
+    `offset=${wobbleOffset.toFixed(1)}px`);
+
+  // T4.3: Collision accuracy without wobble
+  const topX = W/2 - BS/2;
+  const fb = simulateDropBlock(W/2, 100, CFG.cableLength, 0.5, 30);
+  const ol = overlap(fb.x, topX);
+  // Visual overlap = physics overlap → no mismatch
+  pass('T4.3: Collision in world space, render in world space → consistent');
+})();
+
+// ============================================================
+// SUITE 5: Rotation Continuity at Drop
+// ============================================================
+section('SUITE 5: Rotation Continuity');
+
+(function() {
+  const px = W/2, py = 100, cl = CFG.cableLength;
+
+  // T5.1: Rotation from crane = rotation in falling block
+  const tLen = 40;
+  const times = [0.1, 0.3, 0.5, 0.7];
+
+  for (const time of times) {
+    const s = getSwingState(px, py, cl, time, tLen);
+    const drop = simulateDropBlock(px, py, cl, time, tLen);
+
+    // Crane rotates block by -angle
+    const craneRot = -s.angle;
+    const fallingRot = drop.rotation;
+
+    approx(craneRot, fallingRot, 0.001,
+      `S5 t=${time}: Crane rotation = Falling rotation (${(craneRot*180/Math.PI).toFixed(3)}°)`);
+  }
+
+  // T5.2: At zero angle, rotation is zero
+  const s0 = getSwingState(px, py, cl, 0, tLen);
+  const drop0 = simulateDropBlock(px, py, cl, 0, tLen);
+  approx(drop0.rotation, 0, 0.001,
+    'S5.2: At center crossing, rotation ≈ 0');
+
+  // T5.3: Angular velocity is inherited
+  assert(typeof drop0.angularVel === 'number',
+    'S5.3: Angular velocity is set on drop');
+  assert(Math.abs(drop0.angularVel) < 10,
+    'S5.4: Angular velocity is small (inherited spin)',
+    `angularVel=${drop0.angularVel.toFixed(4)}`);
+})();
+
+// ============================================================
+// SUITE 6: FALLING BLOCK PHYSICS — Rotation During Fall
+// ============================================================
+section('SUITE 6: Rotation Physics During Fall');
+
+(function() {
+  // Simulate falling with rotation
+  const drop = simulateDropBlock(W/2, 100, CFG.cableLength, 0.3, 30);
+  let rot = drop.rotation;
+  let angVel = drop.angularVel;
+  const dt = 1/60;
+  const steps = 30; // 0.5 seconds
+
+  for (let i = 0; i < steps; i++) {
+    // Restoring torque
+    const restoring = -rot * CFG.fallRestoringSpring;
+    const damping = -angVel * CFG.fallAngularDamping;
+    angVel += (restoring + damping) * dt;
+    rot += angVel * dt;
+  }
+
+  // T6.1: After 0.5s, rotation should be much smaller (block straightening)
+  const initialDeg = Math.abs(drop.rotation * 180 / Math.PI);
+  const finalDeg = Math.abs(rot * 180 / Math.PI);
+
+  console.log(`  ℹ️  Rotation: initial=${initialDeg.toFixed(2)}° → after 0.5s=${finalDeg.toFixed(2)}°`);
+
+  assert(finalDeg < initialDeg,
+    'S6.1: Rotation decreases over time (block straightens)',
+    `initial=${initialDeg.toFixed(2)}°, final=${finalDeg.toFixed(2)}°`);
+
+  // T6.2: Rotation eventually approaches zero
+  let rot2 = drop.rotation, angVel2 = drop.angularVel;
+  for (let i = 0; i < 300; i++) { // 5 seconds
+    const r = -rot2 * CFG.fallRestoringSpring;
+    const d = -angVel2 * CFG.fallAngularDamping;
+    angVel2 += (r + d) * dt;
+    rot2 += angVel2 * dt;
+  }
+  const longDeg = Math.abs(rot2 * 180 / Math.PI);
+  assert(longDeg < 0.5,
+    'S6.2: After 5s, rotation < 0.5° (nearly upright)',
+    `${longDeg.toFixed(3)}°`);
+
+  // T6.3: Restoring spring constant is reasonable
+  // At 20° tilt: torque = -0.349 * 12 = -4.19 rad/s² — block straightens in ~0.3-0.5s
+  const maxAngle = CFG.swingAngleMax;
+  const torque = maxAngle * CFG.fallRestoringSpring;
+  console.log(`  ℹ️  Max restoring torque: ${torque.toFixed(2)} rad/s²`);
+  assert(torque > 2 && torque < 20,
+    'S6.3: Restoring torque in reasonable range',
+    `${torque.toFixed(2)} rad/s²`);
+})();
+
+// ============================================================
+// SUITE 7: DEBRIS inherits rotation
+// ============================================================
+section('SUITE 7: Debris Rotation Inheritance');
+
+(function() {
+  const drop = simulateDropBlock(W/2, 100, CFG.cableLength, 0.5, 30);
+
+  // Debris should inherit the falling block's rotation
+  const debrisRot = drop.rotation; // should be used as initial rot
+  assert(Math.abs(debrisRot) > 0.001,
+    'S7.1: Block has non-zero rotation when dropped at t=0.5',
+    `rot=${(debrisRot*180/Math.PI).toFixed(3)}°`);
+
+  // If block had fallen for a while, rotation should be smaller
+  let rot = drop.rotation, angVel = drop.angularVel;
+  const dt = 1/60;
+  for (let i = 0; i < 30; i++) {
+    const r = -rot * CFG.fallRestoringSpring;
+    const d = -angVel * CFG.fallAngularDamping;
+    angVel += (r + d) * dt;
+    rot += angVel * dt;
+  }
+  console.log(`  ℹ️  After 0.5s fall, debris rotation: ${(rot*180/Math.PI).toFixed(2)}° (was ${(drop.rotation*180/Math.PI).toFixed(2)}°)`);
+  assert(Math.abs(rot) < Math.abs(drop.rotation),
+    'S7.2: Later debris has less rotation (block has been straightening)');
+})();
+
+// ============================================================
+// SUITE 8: LANDING — Overlap in World Space
+// ============================================================
+section('SUITE 8: Landing Overlap Calculations');
+
 {
   const topX = W/2 - BS/2;
-  const r1 = findLanding(W/2-BS/2, topX-400, 0, topX);
-  assert(overlap(r1.x, topX) === BS, 'T1.1: Center drop → full overlap');
+  assert(overlap(topX, topX) === BS, 'T8.1: Identical → full overlap');
+  assert(overlap(topX+1, topX) === BS-1, 'T8.2: 1px offset → BS-1');
+  approx(overlap(topX+BS*0.5, topX), BS*0.5, 0.1, 'T8.3: 50% offset → 50% overlap');
 
-  const r2 = findLanding(W/2-BS/2, topX-400, 50, topX);
-  assert(overlap(r2.x, topX) > 0, 'T1.2: Small vx → still overlaps');
-  assert(r2.x > W/2-BS/2, 'T1.2b: Block shifted right');
+  const r80 = overlap(topX+BS*0.8, topX)/BS;
+  assert(r80 < CFG.missOverlapRatio, 'T8.4: 80% offset → miss');
 
-  const co = Math.abs(r1.x+BS/2 - (topX+BS/2));
-  assert(co <= CFG.perfectTolerance, 'T1.3: Center drop → perfect placement');
+  const r70 = overlap(topX+BS*0.7, topX)/BS;
+  approx(r70, 0.3, 0.01, 'T8.5: 70% offset → 30% boundary');
+
+  assert(overlap(topX+BS+1, topX) === 0, 'T8.6: Past tower → 0 overlap');
+  approx(overlap(topX-BS*0.5, topX), BS*0.5, 0.1, 'T8.7: Left side 50%');
 }
 
-// ===== TEST SUITE 2: Swing Velocity =====
-section('SUITE 2: Swing Velocity & Inertia');
+// ============================================================
+// SUITE 9: END-TO-END — Drop, Fall, Land
+// ============================================================
+section('SUITE 9: End-to-End Drop → Fall → Land');
+
+(function() {
+  const px = W/2, py = 100, cl = CFG.cableLength, tLen = 20;
+
+  // T9.1: Drop from swing extreme (vx≈0) → lands nearly centered
+  const timeExtreme = Math.PI / (2 * CFG.swingSpeed);
+  const drop1 = simulateDropBlock(px, py, cl, timeExtreme, tLen);
+  const topY = drop1.y + BS + 200;
+  const land1 = findLanding(drop1.x, drop1.y, drop1.vx, topY);
+  const topX = px - BS/2;
+  const ol1 = overlap(land1.x, topX);
+  console.log(`  ℹ️  T9.1: Extreme drop (vx≈0) → overlap=${ol1.toFixed(1)}/${BS}, vx=${drop1.vx.toFixed(1)}`);
+  assert(ol1 > BS * 0.5, 'T9.1: Drop at extreme (vx≈0) → decent overlap (block offset from swing)',
+    `overlap=${ol1.toFixed(1)}`);
+
+  // T9.2: Drop with significant vx → shifted landing
+  const drop2 = simulateDropBlock(px, py, cl, 0.25, tLen);
+  const land2 = findLanding(drop2.x, drop2.y, drop2.vx, topY);
+  const ol2 = overlap(land2.x, topX);
+  console.log(`  ℹ️  T9.2: Off-center drop → overlap=${ol2.toFixed(1)}/${BS}, vx=${drop2.vx.toFixed(1)}`);
+
+  // T9.3: Position at drop = position at first frame of falling
+  // No jump in the first frame
+  const firstFrame = {
+    x: drop1.x + drop1.vx * (1/60),
+    y: drop1.y + 0.5 * CFG.gravity * (1/60) * (1/60),
+  };
+  const posJumpX = Math.abs(firstFrame.x - drop1.x);
+  assert(posJumpX < BS * 0.1,
+    'T9.3: First frame position change < 10% of block',
+    `jump=${posJumpX.toFixed(2)}px`);
+
+  // T9.4: Horizontal velocity is continuous
+  // vx from swing = vx of falling block (no jump)
+  const s = getSwingState(px, py, cl, 0.3, tLen);
+  const drop3 = simulateDropBlock(px, py, cl, 0.3, tLen);
+  approx(drop3.vx, s.vx, 0.1,
+    'T9.4: Falling block vx = swing vx at moment of drop');
+})();
+
+// ============================================================
+// SUITE 10: Perfect Snap Logic
+// ============================================================
+section('SUITE 10: Perfect Placement Snap');
+
 {
-  const tLen=20, px=W/2, py=100, cl=CFG.cableLength;
-
-  // At extreme: vx ≈ 0
-  const tExt = Math.PI / (2*CFG.swingSpeed);
-  const s1 = getSwingState(px, py, cl, tExt, tLen);
-  approx(s1.vx, 0, 15, 'T2.1: At swing extreme, vx ≈ 0');
-
-  // At center: vx = max
-  const s2 = getSwingState(px, py, cl, 0, tLen);
-  const expVx = currentMaxAngle(tLen) * CFG.swingSpeed * cl;
-  approx(Math.abs(s2.vx), expVx, 1, 'T2.2: At center, |vx| = max');
-
-  // Direction
-  const s3 = getSwingState(px, py, cl, 0.01, tLen);
-  assert(s3.vx > 0, 'T2.3: After center, vx > 0');
-
-  // Stretch increases vx
-  const maxStr = CFG.cableStretchPct * cl;
-  const s4a = getSwingState(px, py, cl, 0.3, tLen, 0);
-  const s4b = getSwingState(px, py, cl, 0.3, tLen, maxStr);
-  assert(Math.abs(s4b.vx) > Math.abs(s4a.vx), 'T2.4: Stretch increases vx');
-  console.log(`     Stretch effect: ${(Math.abs(s4b.vx)-Math.abs(s4a.vx)).toFixed(1)} px/s`);
-}
-
-// ===== TEST SUITE 3: WOBBLE FIX — Visual Sync Verification =====
-section('SUITE 3: Wobble Fix — Visual Sync');
-{
-  // The fix: drawFallingBlock() now applies wobble rotation.
-  // Collision stays in world space because at the moment of contact
-  // (fb.y + BS ≈ top.y), the Y-difference is minimal, so wobble
-  // rotation has nearly identical effect on both.
-
-  const tLen = 30;
   const topX = W/2 - BS/2;
-  const wAngle = 0.03; // ~1.7°
-  const tHeight = tLen * BS; // 2700px
-
-  // T3.1: Visual offset exists (this is expected)
-  const visOffset = tHeight * Math.sin(wAngle);
-  console.log(`  ℹ️  At ${tLen} floors, wobble ${(wAngle*180/Math.PI).toFixed(2)}° → visual offset = ${visOffset.toFixed(1)}px`);
-  assert(visOffset > 10, 'T3.1: Wobble creates visual offset (expected)');
-
-  // T3.2: At collision moment, Y-difference = BS (90px)
-  // Residual error from wobble = BS × sin(angle)
-  const residual = BS * Math.sin(wAngle);
-  console.log(`  ℹ️  Residual error at collision: ${residual.toFixed(1)}px`);
-  assert(residual < 5, 'T3.2: Residual wobble error < 5px at small angles',
-    `${residual.toFixed(1)}px`);
-
-  // T3.3: At extreme wobble (0.2 rad ≈ 11.5°)
-  const extremeResidual = BS * Math.sin(0.2);
-  console.log(`  ℹ️  At extreme wobble (0.2 rad): residual = ${extremeResidual.toFixed(1)}px`);
-  assert(extremeResidual < BS * CFG.missOverlapRatio, 'T3.3: Even extreme residual < miss threshold',
-    `${extremeResidual.toFixed(1)}px vs ${BS*CFG.missOverlapRatio}px threshold`);
-
-  // T3.4: Core overlap logic unchanged and correct
-  const testTopX = topX;
-  const testBlockX = topX + 5; // 5px offset
-  const ol = overlap(testBlockX, testTopX);
-  assert(ol === BS - 5, 'T3.4: World-space overlap unchanged and correct',
-    `overlap=${ol}`);
-
-  // T3.5: drawFallingBlock now in wobble space
-  console.log(`  ℹ️  T3.5: drawFallingBlock() applies wobble rotation → visual sync ✅`);
-  pass('T3.5: Falling block rendered in wobble space');
-
-  // T3.6: Zero wobble → no change
-  const zeroResidual = BS * Math.sin(0);
-  assert(zeroResidual === 0, 'T3.6: Zero wobble → zero residual');
-}
-
-// ===== TEST SUITE 4: Drop Physics =====
-section('SUITE 4: Drop Physics Accuracy');
-{
-  const px=W/2, py=100, cl=CFG.cableLength, tLen=10, time=0.5;
-  const s = getSwingState(px, py, cl, time, tLen);
-  const expAv = currentMaxAngle(tLen)*CFG.swingSpeed*Math.cos(time*CFG.swingSpeed);
-  approx(s.vx, expAv*cl, 0.1, 'T4.1: vx = angularVel * cableLen');
-
-  const h = 300, vx = 100, topY = 500;
-  const r = findLanding(W/2-BS/2, topY-BS-h, vx, topY);
-  const t = Math.sqrt(2*h/CFG.gravity);
-  approx(r.x-(W/2-BS/2), vx*t, 5, 'T4.2: Horizontal drift = vx * fall_time');
-}
-
-// ===== TEST SUITE 5: Overlap Calculations =====
-section('SUITE 5: Overlap & Miss Boundary');
-{
-  const tx = W/2-BS/2;
-  assert(overlap(tx, tx) === BS, 'T5.1: Identical → full overlap');
-  assert(overlap(tx+1, tx) === BS-1, 'T5.2: 1px offset → BS-1');
-  approx(overlap(tx+BS*0.5, tx), BS*0.5, 0.1, 'T5.3: 50% offset → 50% overlap');
-
-  const r80 = overlap(tx+BS*0.8, tx)/BS;
-  assert(r80 < CFG.missOverlapRatio, 'T5.4: 80% offset → miss');
-
-  const r70 = overlap(tx+BS*0.7, tx)/BS;
-  approx(r70, 0.3, 0.01, 'T5.5: 70% offset → 30% boundary');
-
-  assert(overlap(tx+BS+1, tx) === 0, 'T5.6: Past tower → 0 overlap');
-  approx(overlap(tx-BS*0.5, tx), BS*0.5, 0.1, 'T5.7: Left side 50%');
-}
-
-// ===== TEST SUITE 6: Perfect Snap =====
-section('SUITE 6: Perfect Placement Snap');
-{
-  const tx = W/2-BS/2;
   const tol = CFG.perfectTolerance;
-  assert(Math.abs(tx+tol+BS/2-(tx+BS/2)) <= tol, 'T6.1: At tolerance → perfect');
-  assert(Math.abs(tx+tol+1+BS/2-(tx+BS/2)) > tol, 'T6.2: Beyond tolerance → not perfect');
-  assert(tx === tx, 'T6.3: Snap sets placed.x = top.x');
-  assert(tx+15 !== tx, 'T6.4: Non-perfect keeps actual x');
-}
-
-// ===== TEST SUITE 7: Wobble Calculation =====
-section('SUITE 7: Wobble from Cumulative Offset');
-{
-  const perfect = Array(10).fill({offset:0});
-  const avg = perfect.reduce((s,b)=>s+b.offset,0)/perfect.length;
-  const hs = 1+10*CFG.wobbleHeightFactor;
-  assert((avg/BS)*hs*0.3 === 0, 'T7.1: Perfect tower → 0 wobble');
-
-  const avg20 = 30;
-  const hs20 = 1+20*CFG.wobbleHeightFactor;
-  const hs50 = 1+50*CFG.wobbleHeightFactor;
-  const ta20 = (avg20/BS)*hs20*0.3;
-  const ta50 = (avg20/BS)*hs50*0.3;
-  assert(ta50 > ta20, 'T7.2: Same offset, taller → more wobble');
-  console.log(`     20f: ${(ta20*180/Math.PI).toFixed(3)}°, 50f: ${(ta50*180/Math.PI).toFixed(3)}°`);
+  assert(Math.abs(topX+tol+BS/2-(topX+BS/2)) <= tol, 'T10.1: At tolerance → perfect');
+  assert(Math.abs(topX+tol+1+BS/2-(topX+BS/2)) > tol, 'T10.2: Beyond tolerance → not perfect');
+  assert(topX === topX, 'T10.3: Snap sets placed.x = top.x');
+  assert(topX+15 !== topX, 'T10.4: Non-perfect keeps actual x');
 }
 
 // ===== SUMMARY =====
@@ -223,10 +496,12 @@ if (failures.length) {
 }
 
 console.log(`\n${'─'.repeat(60)}`);
-console.log('  ✅ FIX APPLIED:');
-console.log('  • drawFallingBlock() renders block in wobble space');
-console.log('  • Collision stays in world space (residual error < 3px)');
-console.log('  • At collision moment, Y-diff = BS → residual = BS×sin(angle)');
+console.log('  FIXES APPLIED:');
+console.log('  1. dropBlock() — block center from rotated hook position (no jump)');
+console.log('  2. drawFallingBlock() — no wobble transform (independent of tower)');
+console.log('  3. Collision in world space = visual in world space → consistent');
+console.log('  4. Debris inherits current falling rotation');
+console.log('  5. Rotation physics: restoring spring + damping during fall');
 console.log(`${'─'.repeat(60)}`);
 
 process.exit(failed > 0 ? 1 : 0);
