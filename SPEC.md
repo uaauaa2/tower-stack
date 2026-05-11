@@ -165,14 +165,29 @@ GAME_OVER ──city──► CITY_VIEW ──back──► MENU
 - At the bottom of the swing (passing through center), the cable is at its natural length.
 - Stretch is reset to 0 on each new block spawn and ramps up smoothly to avoid initial jerk.
 
-### 4.3 Drop Physics (Inertia)
-- When player taps, block **detaches from cable with its current velocity**.
+### 4.3 Drop Physics (Inertia + Rotation)
+- When player taps, block **detaches from cable with its current velocity and tilt angle**.
+- **Position continuity:** Block's world position is calculated from the rotated geometry to match exactly where the crane rendered it:
+  ```
+  hookX = pivotX + sin(angle) × cableLength
+  hookY = pivotY + cos(angle) × cableLength
+  blockCenterX = hookX + (BS/2) × sin(angle)
+  blockCenterY = hookY + (BS/2) × cos(angle)
+  ```
+  This eliminates the visual "jump" that would occur if position were simply `(hookX - BS/2, hookY)` (non-rotated).
 - Horizontal velocity = derivative of pendulum position at moment of release.
-  - `vx = swingSpeed * cableLength * cos(angle) * cos(swingSpeed * t)` at time of release
-  - Simplified: `vx = -maxAngle * swingSpeed * cos(swingSpeed * time) * cableLength` at release
+  - `vx = swingAngularVel × cableLength` at release
+- **Rotation:** Block inherits its tilt from the cable (`rotation = -angle`). A small angular velocity is also inherited from the swing.
+- **Straightening during fall:** Rotation evolves via a restoring spring + damping model:
+  ```
+  restoringTorque = -rotation × fallRestoringSpring  (default 12)
+  angularDamping  = -angularVel × fallAngularDamping (default 4)
+  ```
+  Block straightens from max tilt (~20°) to near-vertical in ~0.3–0.5 seconds.
 - Vertical: gravity pulls down (2000 px/s²).
 - **No air resistance** on horizontal movement — block keeps its horizontal momentum.
-- This means: if you drop while swinging right, block continues moving right while falling.
+- **Falling block rendered in world space** (no wobble transform) — ensures visual = physics = collision.
+- This means: if you drop while swinging right, block continues moving right while falling, and the tilt you see on the cable smoothly transitions into the tilt during fall.
 
 ### 4.4 Tower Wobble (NOT Overhang Cutting)
 - When a block lands **off-center**, the tower **does NOT get cut**.
@@ -190,7 +205,7 @@ GAME_OVER ──city──► CITY_VIEW ──back──► MENU
 
 ### 4.5 Miss / Fall-Off Logic
 - A block is considered "missed" if less than **30%** of its surface overlaps with the tower top.
-- When missed, block falls off to the side with rotation animation.
+- When missed, block falls off to the side with **rotation inherited from its current tilt** (`fallingBlock.rotation`), plus additional spin.
 - **Player has 3 misses before game over** (lives system).
 - HUD shows remaining lives: ❤️❤️❤️ → ❤️❤️🖤 → ❤️🖤🖤 → GAME OVER
 - Miss resets combo but doesn't end game immediately.

@@ -2,13 +2,13 @@
 
 > **Spec ID:** 001-tower-stack
 > **Status:** Phase 1 Complete (MVP shipped)
-> **Source:** SPEC.md v2.0 (2026-05-09)
+> **Source:** SPEC.md v3.0 (2026-05-11)
 
 ---
 
 ## Summary
 
-A Tower Bloxx-style casual web game: a crane swings a block on a cable, you tap to drop it, stack blocks into a tower. Physics-based landing with swing momentum. Perfect timing = combos. Miss 3 times and the game ends. After each round, your tower joins a growing city skyline. Play in browser or inside Telegram.
+A Tower Bloxx-style casual web game: a crane swings a block on a cable, you tap to drop it, stack blocks into a tower. Physics-based landing with swing momentum, block rotation, and cable tilt inheritance. Perfect timing = combos. Miss 3 times and the game ends. After each round, your tower joins a growing city skyline. Play in browser or inside Telegram.
 
 ---
 
@@ -58,53 +58,81 @@ A Tower Bloxx-style casual web game: a crane swings a block on a cable, you tap 
 - **FR-02:** Block is square (90×90px). Size stays constant (no shrinking).
 - **FR-03:** Cable length is fixed at 4× block height (360px). Crane may extend off-screen.
 - **FR-04:** When tapped, block detaches with its current swing velocity (horizontal momentum preserved). Falls under gravity (2000 px/s²).
-- **FR-05:** Tower wobbles on off-center placement. Wobble amplitude = f(cumulative avg offset, tower height). Wobble is a driven damped spring.
-- **FR-06:** No overhang cutting — the entire tower wobbles instead. Block stays at placed position.
-- **FR-07:** Wobble suppressed while base block is still visible on screen.
+- **FR-05:** Block inherits its **tilt angle from the cable** at the moment of release. The tilt rotates around the block's center, not the hook point, ensuring zero visual discontinuity between crane-swing and free-fall rendering.
+- **FR-06:** During free fall, the block **rotates toward upright** via a restoring spring + damping model. This creates natural, visible straightening over ~0.3–0.5 seconds.
+- **FR-07:** Tower wobbles on off-center placement. Wobble amplitude = f(cumulative avg offset, tower height). Wobble is a driven damped spring.
+- **FR-08:** No overhang cutting — the entire tower wobbles instead. Block stays at placed position.
+- **FR-09:** Wobble suppressed while base block is still visible on screen.
+
+### Drop Physics (Detailed)
+
+- **FR-10:** At release, the block's world position is calculated from the **rotated geometry** around the hook point:
+  ```
+  hookX = pivotX + sin(angle) × cableLength
+  hookY = pivotY + cos(angle) × cableLength
+  
+  blockCenterX = hookX + (BS/2) × sin(angle)
+  blockCenterY = hookY + (BS/2) × cos(angle)
+  ```
+  This ensures the block's visual position matches exactly where `drawCrane()` rendered it (tilted with cable, rotating around hook top-center).
+
+- **FR-11:** Block rotation at release = `-angle` (negated for canvas coordinate convention where positive rotation is clockwise).
+
+- **FR-12:** Block inherits a small angular velocity from the swing: `angularVel = -vx / cableLength × 0.3`.
+
+- **FR-13:** During fall, rotation evolves via spring-damper physics:
+  ```
+  restoringTorque = -rotation × fallRestoringSpring  (default 12)
+  angularDamping   = -angularVel × fallAngularDamping (default 4)
+  angularVel += (restoringTorque + angularDamping) × dt
+  rotation += angularVel × dt
+  ```
+
+- **FR-14:** Falling block is rendered in **world space** (no wobble transform). It is not attached to the tower, so wobble does not affect it. This ensures visual position = physics position = collision position at all times.
 
 ### Miss / Lives
 
-- **FR-08:** Block considered "missed" if < 30% overlap with tower top. Block falls off with rotation.
-- **FR-09:** Player has 3 lives. HUD shows ❤️❤️❤️ → ❤️❤️🖤 → ❤️🖤🖤 → GAME OVER.
-- **FR-10:** Miss resets combo to 0 but doesn't immediately end game.
+- **FR-15:** Block considered "missed" if < 30% overlap with tower top. Block falls off with rotation (inherited from current tilt).
+- **FR-16:** Player has 3 lives. HUD shows ❤️❤️❤️ → ❤️❤️🖤 → ❤️🖤🖤 → GAME OVER.
+- **FR-17:** Miss resets combo to 0 but doesn't immediately end game.
 
 ### Scoring
 
-- **FR-11:** Per floor: 100 × combo multiplier.
-- **FR-12:** Perfect placement (centered ±3px): +50 bonus.
-- **FR-13:** Height milestone (every 10 floors): +500 bonus.
-- **FR-14:** Combo increments on consecutive centered placements. Non-perfect non-miss landings do NOT reset combo.
+- **FR-18:** Per floor: 100 × combo multiplier.
+- **FR-19:** Perfect placement (centered ±3px): +50 bonus.
+- **FR-20:** Height milestone (every 10 floors): +500 bonus.
+- **FR-21:** Combo increments on consecutive centered placements. Non-perfect non-miss landings do NOT reset combo.
 
 ### Camera & Viewport
 
-- **FR-15:** Bottom portion shows last 3.5 blocks of tower.
-- **FR-16:** Camera scrolls up smoothly as tower grows (lerp speed ~5.0).
-- **FR-17:** Camera never moves down.
+- **FR-22:** Bottom portion shows last 3.5 blocks of tower.
+- **FR-23:** Camera scrolls up smoothly as tower grows (lerp speed ~5.0).
+- **FR-24:** Camera never moves down.
 
 ### Background
 
-- **FR-18:** 8 height-based zones (Ground → Space) with procedural backgrounds.
-- **FR-19:** Smooth color transitions at zone boundaries (first/last 30% of each zone).
-- **FR-20:** Decorative elements (trees, clouds, birds, planes, stars, satellites) drift slowly.
+- **FR-25:** 8 height-based zones (Ground → Space) with procedural backgrounds.
+- **FR-26:** Smooth color transitions at zone boundaries (first/last 30% of each zone).
+- **FR-27:** Decorative elements (trees, clouds, birds, planes, stars, satellites) drift slowly.
 
 ### Screens
 
-- **FR-21:** Main Menu — title animation, PLAY/MY CITY/SETTINGS buttons, high score display.
-- **FR-22:** Settings Screen — overlay with all configurable physics parameters, Apply & Restart / Cancel.
-- **FR-23:** Gameplay — canvas with dynamic background, HUD (score, combo, lives, floors), "TAP TO DROP" hint.
-- **FR-24:** Game Over — overlay with stats (height, score, best combo), RETRY/CITY buttons.
-- **FR-25:** City View — horizontal skyline of all previous towers, scrollable with touch, BACK/PLAY buttons.
+- **FR-28:** Main Menu — title animation, PLAY/MY CITY/SETTINGS buttons, high score display.
+- **FR-29:** Settings Screen — overlay with all configurable physics parameters (including fall rotation), Apply & Restart / Cancel.
+- **FR-30:** Gameplay — canvas with dynamic background, HUD (score, combo, lives, floors), "TAP TO DROP" hint.
+- **FR-31:** Game Over — overlay with stats (height, score, best combo), RETRY/CITY buttons.
+- **FR-32:** City View — horizontal skyline of all previous towers, scrollable with touch, BACK/PLAY buttons.
 
 ### Persistence
 
-- **FR-26:** All data in localStorage. Keys: `towerStack_city`, `towerStack_bestScore`, `towerStack_bestHeight`, `towerStack_settings`.
-- **FR-27:** Max 50 towers kept in city history.
+- **FR-33:** All data in localStorage. Keys: `towerStack_v2` (unified JSON with towers, scores, settings).
+- **FR-34:** Max 50 towers kept in city history.
 
 ### Telegram Integration
 
-- **FR-28:** Load `telegram-web-app.js` SDK when in Telegram environment.
-- **FR-29:** Call `Telegram.WebApp.ready()` and `Telegram.WebApp.expand()` on launch.
-- **FR-30:** Haptic feedback on drop/land/game over via `Telegram.WebApp.HapticFeedback`.
+- **FR-35:** Load `telegram-web-app.js` SDK when in Telegram environment.
+- **FR-36:** Call `Telegram.WebApp.ready()` and `Telegram.WebApp.expand()` on launch.
+- **FR-37:** Haptic feedback on drop/land/game over via `Telegram.WebApp.HapticFeedback`.
 
 ---
 
@@ -112,11 +140,12 @@ A Tower Bloxx-style casual web game: a crane swings a block on a cable, you tap 
 
 | Entity | Description |
 |--------|-------------|
-| **Block** | Square game piece (90×90px). Properties: x, y, width, height, color, perfect flag. |
-| **Tower** | Array of placed blocks, bottom to top. Wobble state (angle, target angle). |
-| **TowerRecord** | Saved tower: height, date, width. Stored in localStorage for city view. |
-| **GameState** | State machine: MENU → PLAYING → DROPPING → PLAYING/GAME_OVER → CITY_VIEW. |
-| **Crane** | Pendulum system: pivot point, angle, speed, cable length, attached block. |
+| **Block** | Square game piece (90×90px). Properties: x, y, width, height, color, perfect flag, offset (inaccuracy). |
+| **FallingBlock** | Block in free fall. Additional: vx, vy, rotation (tilt angle), angularVel (spin rate). |
+| **Tower** | Array of placed blocks, bottom to top. Wobble state (angle, angularVel, targetAngle). |
+| **TowerRecord** | Saved tower: height, score, date. Stored in localStorage for city view. |
+| **GameState** | State machine: MENU → PLAYING → DROPPING → PLAYING/GAME_OVER → CITY_VIEW → SETTINGS. |
+| **Crane** | Pendulum system: pivot point, time, cable length, stretch, stretch velocity. |
 | **Camera** | Scroll position with smooth lerp toward target. Never goes down. |
 | **City** | Collection of TowerRecords rendered as a skyline. |
 
@@ -131,7 +160,10 @@ A Tower Bloxx-style casual web game: a crane swings a block on a cable, you tap 
 - **SC-05:** City view renders all saved towers correctly.
 - **SC-06:** All 8 background zones display with smooth transitions.
 - **SC-07:** Tower wobble responds to placement accuracy without overhang cutting.
-- **SC-08:** Works as Telegram Mini App with optional SDK.
+- **SC-08:** Block position is visually continuous at the moment of release (no jump).
+- **SC-09:** Falling block rotation straightens naturally during fall.
+- **SC-10:** Collision detection and visual position are always consistent (world-space).
+- **SC-11:** Works as Telegram Mini App with optional SDK.
 
 ---
 
@@ -139,11 +171,13 @@ A Tower Bloxx-style casual web game: a crane swings a block on a cable, you tap 
 
 - A-01: No backend needed for MVP. All data local.
 - A-02: Portrait orientation is the primary layout. Landscape is not supported.
-- A-03: No rotation physics on dropped blocks — they fall straight with horizontal momentum only.
+- A-03: Block has rotation physics — inherits tilt from cable, straightens via spring-damper during fall.
 - A-04: Canvas max width capped at 480px for consistent desktop experience.
 - A-05: Fredoka One + Nunito fonts loaded from CDN (or fallback to system-ui).
 - A-06: Block color palette cycles through 6 colors: `#FF6B6B`, `#FFD93D`, `#6BCB77`, `#4D96FF`, `#C084FC`, `#FFA07A`.
 
 ---
 
-*Derived from SPEC.md v2.0 and ENGINEERING.md v1.0*
+*Spec version: 3.0*
+*Updated: 2026-05-11*
+*Changes: Added FR-05 through FR-14 (rotation physics, corrected drop position), FR-14 (world-space rendering), SC-08 through SC-10. Removed A-03 contradiction (now supports rotation).*

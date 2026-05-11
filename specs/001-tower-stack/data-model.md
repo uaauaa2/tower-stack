@@ -2,6 +2,7 @@
 
 > **Spec ID:** 001-tower-stack
 > **Source:** ENGINEERING.md §2.3, §9
+> **Updated:** 2026-05-11
 
 ---
 
@@ -19,6 +20,8 @@ Block {
   height: number     // Block height (90px constant)
   color: string      // Hex color from palette
   perfect: boolean   // True if placed within ±3px of center
+  isBase: boolean    // True for the ground-level base block
+  offset: number     // Center offset from perfect position (px), used for wobble
 }
 ```
 
@@ -26,6 +29,62 @@ Block {
 - `width === height === 90` (constant, never changes)
 - `x ≥ 0`, positioned via overlap calculation on landing
 - Color cycles through palette: `#FF6B6B`, `#FFD93D`, `#6BCB77`, `#4D96FF`, `#C084FC`, `#FFA07A`
+
+---
+
+### FallingBlock
+
+Block in free fall after release from cable. Extends block with physics state.
+
+```
+FallingBlock {
+  x: number           // Left edge in world coords (calculated from rotated hook)
+  y: number           // Top edge in world coords (calculated from rotated hook)
+  width: number       // 90px
+  height: number      // 90px
+  color: string       // Next palette color
+  vx: number          // Horizontal velocity from swing inertia (px/s)
+  vy: number          // Vertical velocity (starts at 0, gravity applied each frame)
+  rotation: number    // Current tilt angle (radians). Initial value = -swingAngle
+  angularVel: number  // Angular velocity (rad/s). Initial = small inherited spin
+}
+```
+
+**Initialization at drop (from `getSwingState`):**
+```
+hookX = pivotX + sin(angle) × cableLength
+hookY = pivotY + cos(angle) × cableLength
+
+// Block center from rotated geometry (matches drawCrane rendering)
+blockCenterX = hookX + (BS/2) × sin(angle)
+blockCenterY = hookY + (BS/2) × cos(angle)
+
+x = blockCenterX - BS/2
+y = blockCenterY - BS/2
+vx = angularVel × cableLength   // horizontal swing velocity
+rotation = -angle                // inherited tilt
+angularVel = -vx / cableLength × 0.3  // inherited spin (small)
+```
+
+**Physics each frame:**
+```
+vy += gravity × dt                    // gravity: 2000 px/s²
+x += vx × dt                         // horizontal inertia (no air resistance)
+y += vy × dt
+
+// Rotation spring-damper
+restoringTorque = -rotation × fallRestoringSpring    // default: 12
+angularDamping  = -angularVel × fallAngularDamping   // default: 4
+angularVel += (restoringTorque + angularDamping) × dt
+rotation += angularVel × dt
+```
+
+**Rendering:** In world space only (no wobble transform). Rotated around its center:
+```
+ctx.translate(x + BS/2, y + BS/2 - camera.y)
+ctx.rotate(rotation)
+ctx.fillRect(-BS/2, -BS/2, BS, BS)
+```
 
 ---
 
@@ -42,13 +101,39 @@ Tower = Block[]
 - `topBlock = tower[tower.length - 1]` — highest placed block
 - `avgOffset` — cumulative average offset of all blocks from perfect center (used for wobble)
 
-**Wobble state (attached to tower):**
+**Wobble state (global, not per-block):**
 ```
-TowerWobble {
-  targetAngle: number   // Set on block land, constant until next land
-  currentAngle: number  // Current wobble angle (radians)
-  velocity: number      // Angular velocity for spring simulation
+Wobble {
+  angle: number       // Current wobble angle (radians)
+  angularVel: number  // Angular velocity for spring simulation
+  targetAngle: number // Set on block land, constant until next land
 }
+```
+
+**Wobble pivot:** `{ x: baseBlock.x + BS/2, y: baseBlock.y + BS }` — center-bottom of the base block. The entire tower rotates as a rigid body around this point.
+
+**Wobble physics each frame:**
+```
+// Spring toward targetAngle
+springForce = (targetAngle - angle) × wobbleSpringK   // default: 5
+dampingForce = -angularVel × wobbleDamping             // default: 1.5
+angularVel += (springForce + dampingForce) × dt
+angle += angularVel × dt
+```
+
+**Wobble target calculation on block land:**
+```
+avgOffset = sum(block.offset for block in tower) / tower.length
+heightScale = 1 + tower.length × wobbleHeightFactor    // default: 0.02
+targetAngle = (avgOffset / blockSize) × heightScale × 0.3
+```
+
+**Rendering:** All tower blocks drawn inside a wobble transform:
+```
+ctx.translate(pivotX + shake.x, pivotY - camera.y + shake.y)
+ctx.rotate(wobble.angle)
+ctx.translate(-pivotX, -(pivotY - camera.y))
+// Draw each block at its world (x, y - camera.y) position
 ```
 
 ---
@@ -60,8 +145,8 @@ Persisted summary of a completed tower. Stored in localStorage.
 ```
 TowerRecord {
   height: number      // Number of blocks placed
-  date: string        // ISO 8601 date string (e.g., "2026-05-09")
-  width: number       // Final block width at game end (for city rendering)
+  score: number       // Final score
+  date: string        // ISO 8601 date string (e.g., "2026-05-11")
 }
 ```
 
@@ -78,9 +163,10 @@ State machine controlling game flow.
 GameState = enum {
   MENU,        // Title screen with PLAY/MY CITY/SETTINGS
   PLAYING,     // Crane swinging, awaiting tap
-  DROPPING,    // Block released, falling under gravity
+  DROPPING,    // Block released, falling under gravity + rotation
   GAME_OVER,   // Stats overlay, RETRY/CITY buttons
-  CITY_VIEW    // Horizontal skyline of saved towers
+  CITY_VIEW,   // Horizontal skyline of saved towers
+  SETTINGS     // Physics parameters overlay
 }
 ```
 
@@ -89,12 +175,16 @@ GameState = enum {
 | From | To | Trigger |
 |------|----|---------|
 | MENU | PLAYING | Tap/click/space |
-| PLAYING | DROPPING | Tap/click/space |
+| PLAYING | DROPPING | Tap/click/space (releases block) |
 | DROPPING | PLAYING | Block lands (≥30% overlap) |
+| DROPPING | DROPPING→PLAYING | Block misses but lives > 0 (debris created) |
 | DROPPING | GAME_OVER | Block misses (<30% overlap, lives = 0) |
 | GAME_OVER | PLAYING | Tap RETRY |
 | GAME_OVER | CITY_VIEW | Tap CITY |
 | CITY_VIEW | MENU | Tap BACK |
+| MENU | SETTINGS | Tap SETTINGS |
+| SETTINGS | PLAYING | Apply & Restart |
+| SETTINGS | MENU | Cancel |
 
 ---
 
@@ -104,24 +194,38 @@ Pendulum system that swings the next block.
 
 ```
 Crane {
-  x: number           // Pivot X position (world coords)
-  y: number           // Pivot Y position (world coords, moves with camera)
-  angle: number       // Current swing angle (radians, oscillates ±maxAngle)
-  speed: number       // Angular velocity (constant ~π rad/s)
-  cableLength: number  // Fixed at 360px (4 × blockHeight)
-  stretch: number     // Current cable elastic stretch (0 to ~4% of cableLength)
-  block: Block | null // Attached block (null during DROPPING state)
+  pivotX: number      // Pivot X position (always W/2)
+  pivotY: number      // Pivot Y position (world coords, moves with tower height)
+  time: number        // Accumulated time for sin-based swing
+  cableLength: number // Fixed at 360px (4 × blockSize)
+  stretch: number     // Current cable elastic stretch (px)
+  stretchVel: number  // Stretch velocity for spring-damper
 }
 ```
 
-**Swing formula:**
+**Swing formula (computed in `getSwingState`):**
 ```
-angle = maxAngle(floors) × sin(time × swingSpeed)
-blockX = pivotX + sin(angle) × (cableLength + stretch)
-blockY = pivotY + cos(angle) × (cableLength + stretch)
+speed = π rad/s (constant)
+maxAngle = smoothstepInterpolation(floors) × swingAngleMax
+angle = maxAngle × sin(time × speed)
+angularVel = maxAngle × speed × cos(time × speed)
+
+cl = cableLength + stretch
+hookX = pivotX + sin(angle) × cl
+hookY = pivotY + cos(angle) × cl
+
+vx = angularVel × cl    // horizontal velocity at hook
 ```
 
-**Amplitude table (maxAngle by floor, default 20°):**
+**Block rendering on crane (`drawCrane`):**
+```
+// Block tilts with cable, rotates around hook (top-center attachment)
+ctx.translate(hookX, hookY - camera.y)
+ctx.rotate(-angle)
+ctx.fillRect(-BS/2, 0, BS, BS)    // block hangs below hook
+```
+
+**Amplitude table (maxAngle by floor, default max 20°):**
 
 | Floors | Angle |
 |--------|-------|
@@ -132,6 +236,17 @@ blockY = pivotY + cos(angle) × (cableLength + stretch)
 | 30 | ~9° |
 | 50 | ~14° |
 | 80+ | ~20° |
+
+**Cable stretch physics:**
+```
+maxStretch = cableLength × cableStretchFactor   // default: 0.04 (4%)
+stretchTarget = maxStretch × sin²(time × speed) // peaks at extremes
+
+springForce = (stretchTarget - stretch) × cableStiffness       // default: 6
+dampingForce = -stretchVel × cableStretchDamping × cableStiffness  // default: 12
+stretchVel += (springForce + dampingForce) × dt
+stretch += stretchVel × dt
+```
 
 ---
 
@@ -147,66 +262,67 @@ Camera {
 ```
 
 **Behavior:**
-- `targetY = max(0, towerTopY - canvasHeight × 0.6)`
-- `y += (targetY - y) × lerpSpeed × dt` (lerpSpeed = 5.0)
-- Camera never moves down: `y = max(y, newY)`
-- Bottom portion shows last 3.5 blocks
+- `y += (targetY - y) × cameraLerp × dt` (cameraLerp = 4.0)
+- Camera never moves down
 
 ---
 
-### City
+### Debris
 
-Collection of all saved TowerRecords, rendered as a skyline.
-
-```
-City = TowerRecord[]
-```
-
-**Rendering:**
-- Towers sorted by height (shortest → tallest, left → right)
-- Each rendered as a colored rectangle proportional to `width`
-- Windows drawn as small squares in grid pattern
-- Horizontally scrollable with touch pan
-
----
-
-### Debris (Falling Overhang)
-
-When a block lands off-center, the overhang becomes falling debris.
+When a block misses, it becomes debris with rotation.
 
 ```
 Debris {
   x: number      // World X position
   y: number      // World Y position
-  width: number   // Overhang width
-  height: number  // Same as block height (90px)
+  width: number   // Block size (90px)
+  height: number  // Block size (90px)
+  color: string
   vx: number      // Horizontal velocity (falls sideways)
-  vy: number      // Vertical velocity (gravity)
-  rotation: number // Current rotation angle
-  rotSpeed: number // Rotation speed (rad/s)
+  vy: number      // Vertical velocity (gravity + initial upward)
+  rot: number     // Current rotation (inherited from FallingBlock.rotation)
+  vr: number      // Rotation speed (rad/s)
 }
 ```
 
-**Lifecycle:** Created on partial overlap landing, removed when falls below viewport.
+**Initialization:** `rot` inherits from `fallingBlock.rotation` at moment of miss.
+
+**Lifecycle:** Created on miss, removed when falls below viewport.
 
 ---
 
-### ScreenShake
+### Particle
 
-Transient visual effect on perfect placement and game over.
+Short-lived visual effect (sparkles on perfect placement).
 
 ```
-ScreenShake {
-  x: number         // Current offset X
-  y: number         // Current offset Y
-  intensity: number // Shake magnitude (px)
-  timer: number     // Remaining duration (seconds)
+Particle {
+  x, y: number
+  vx, vy: number    // Random burst velocity
+  life: number       // Remaining time (0.4–0.8s)
+  maxLife: number
+  size: number       // 3–8px
+  color: string
 }
 ```
 
-**Values:**
-- Perfect: intensity 3px, duration 200ms
-- Game over: intensity 8px, duration 400ms
+---
+
+### FloatText
+
+Score/perfect text floating upward.
+
+```
+FloatText {
+  text: string
+  x, y: number      // World position
+  vy: number         // Upward velocity (-40 to -70 px/s)
+  life: number       // Remaining time (0.8–1.2s)
+  maxLife: number
+  color: string
+  size: number       // Font size (16–24px)
+}
+```
 
 ---
 
@@ -218,29 +334,40 @@ Game (singleton)
  ├── score: number
  ├── combo: number
  ├── bestCombo: number
- ├── missesLeft: number (starts at 3)
+ ├── lives: number (starts at 3)
  ├── crane: Crane
- │     └── block: Block | null
+ │     └── stretch, stretchVel, time
  ├── tower: Block[]
- │     └── wobble: TowerWobble
- ├── fallingBlock: Block | null (during DROPPING)
+ ├── wobble: Wobble { angle, angularVel, targetAngle }
+ ├── fallingBlock: FallingBlock | null (during DROPPING)
  ├── debris: Debris[]
+ ├── particles: Particle[]
+ ├── floatTexts: FloatText[]
  ├── camera: Camera
- ├── city: TowerRecord[] (loaded from localStorage)
- └── screenShake: ScreenShake
+ ├── shake: ScreenShake
+ └── buttons: Button[]
 ```
 
 ---
 
 ## Storage Schema (localStorage)
 
-| Key | Type | Description |
-|-----|------|-------------|
-| `towerStack_city` | `TowerRecord[]` (JSON) | Saved towers (max 50) |
-| `towerStack_bestScore` | `number` (string) | All-time best score |
-| `towerStack_bestHeight` | `number` (string) | All-time highest tower |
-| `towerStack_settings` | `object` (JSON) | Custom physics settings |
+Single key: `towerStack_v2` containing:
+
+```json
+{
+  "highScore": 4200,
+  "totalTowers": 15,
+  "highestTower": 42,
+  "towers": [
+    { "height": 23, "score": 3100, "date": "2026-05-11" }
+  ]
+}
+```
+
+- Max 50 towers in history
 
 ---
 
-*Source: ENGINEERING.md §2.3 (Object Diagram), §9 (Storage Schema)*
+*Source: ENGINEERING.md, index.html*
+*Updated: 2026-05-11 — Added FallingBlock with rotation, fixed drop position geometry, wobble separate from tower array*

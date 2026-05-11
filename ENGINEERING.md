@@ -270,47 +270,86 @@ blockY = pivotY + cos(angle) * cableLength
 
 ### 5.2 Block Physics (Drop)
 
-When released, the block falls under gravity. No horizontal movement.
+When released, the block falls under gravity **with horizontal inertia, rotation, and spring-damper straightening**.
 
+**Initialization at release:**
 ```
-velocity += gravity * dt
-block.y += velocity * dt
+// From getSwingState():
+hookX = pivotX + sin(angle) × cableLength
+hookY = pivotY + cos(angle) × cableLength
+
+// Block center calculated from rotated geometry (matches crane rendering)
+blockCenterX = hookX + (BS/2) × sin(angle)
+blockCenterY = hookY + (BS/2) × cos(angle)
+
+x = blockCenterX - BS/2
+y = blockCenterY - BS/2
+vx = angularVel × cableLength
+rotation = -angle              // inherited tilt from cable
+angularVel = -vx / cl × 0.3   // small inherited spin
+```
+
+**Physics each frame:**
+```
+vy += gravity × dt             // gravity: 2000 px/s²
+x += vx × dt                  // horizontal inertia preserved
+y += vy × dt
+
+// Rotation spring-damper (block straightens toward upright)
+restoringTorque = -rotation × fallRestoringSpring     // 12
+angularDamping  = -angularVel × fallAngularDamping   // 4
+angularVel += (restoringTorque + angularDamping) × dt
+rotation += angularVel × dt
 ```
 
 - `gravity`: 2000 px/s² (feels snappy)
-- No air resistance
-- No rotation (keeps it simple and readable)
+- `fallRestoringSpring`: 12 — torque pulling block upright
+- `fallAngularDamping`: 4 — air resistance on rotation
+- Block visually straightens from max tilt (~20°) to near-zero in ~0.3–0.5s
+- No horizontal air resistance
 
 ### 5.3 Collision & Placement
 
-The critical calculation. Each frame during DROPPING state:
+The critical calculation. Each frame during DROPPING state. **All calculations are in world space** — the falling block is NOT rendered in wobble space, ensuring visual position = collision position.
 
 ```
 towerTop = tower[tower.length - 1]
 
-if (fallingBlock.y + fallingBlock.height >= towerTop.y):
-    // Calculate horizontal overlap
+if (fallingBlock.y + BS >= towerTop.y):
+    // Calculate horizontal overlap in world coords
     overlapLeft  = max(fallingBlock.x, towerTop.x)
-    overlapRight = min(fallingBlock.x + fallingBlock.width, towerTop.x + towerTop.width)
+    overlapRight = min(fallingBlock.x + BS, towerTop.x + BS)
     overlapWidth = overlapRight - overlapLeft
     
     if (overlapWidth <= 0):
-        // Complete miss → GAME_OVER
+        // Complete miss → debris with inherited rotation
+    elif (overlapWidth / BS < missOverlapRatio):
+        // < 30% overlap → miss
     else:
-        // Place block with overlapWidth
+        // Place block at actual landing position (NO cutting)
         placedBlock = {
-            x: overlapLeft,
-            y: towerTop.y - blockHeight,
-            width: overlapWidth,
-            height: blockHeight,
+            x: fallingBlock.x,        // full block, where it fell
+            y: towerTop.y - BS,
+            width: BS,                 // no shrinking
+            height: BS,
             color: nextColor(),
-            perfect: (overlapWidth >= fallingBlock.width - PERFECT_TOLERANCE)
+            perfect: false,
+            offset: centerOffset       // for wobble calculation
         }
+        
+        // Perfect check (centered ±3px)
+        centerOffset = abs((fallingBlock.x + BS/2) - (towerTop.x + BS/2))
+        if (centerOffset <= perfectTolerance):
+            placedBlock.x = towerTop.x    // snap to perfect
+            placedBlock.perfect = true
+            placedBlock.offset = 0
+        
         tower.push(placedBlock)
         
-        // Cut off overhang if any
-        if (overlapWidth < fallingBlock.width):
-            createDebris(overhang portion)
+        // Update wobble target based on cumulative inaccuracy
+        avgOffset = sum(block.offset) / tower.length
+        heightScale = 1 + tower.length × wobbleHeightFactor
+        wobble.targetAngle = (avgOffset / BS) × heightScale × 0.3
 ```
 
 **Constants:**
@@ -818,11 +857,11 @@ const CONFIG = {
 
 ## 14. Known Constraints
 
-1. **No rotation physics.** Blocks don't rotate when dropped. This is intentional — Tower Bloxx works because placement is readable.
-2. **No lateral movement after release.** Once dropped, blocks fall straight down. This keeps the game about timing.
-3. **No mid-air correction.** The only control is *when* to drop.
-4. **Canvas only.** No DOM elements for game objects. HUD overlays are drawn on canvas too. This keeps touch handling simple.
-5. **Single file.** All code in one `index.html`. No splitting for now — the game is small enough.
+1. **Falling block in world space.** The falling block is NOT rendered in wobble space — it's independent of tower sway. This ensures collision accuracy but means the player sees the tower swaying independently from the falling block.
+2. **No mid-air correction.** The only control is *when* to drop.
+3. **Canvas only.** No DOM elements for game objects. HUD overlays are drawn on canvas too.
+4. **Single file.** All code in one `index.html`. No splitting for now — the game is small enough.
+5. **Block rotation is visual + physical.** The tilt affects how the block looks during fall, but collision uses axis-aligned bounding boxes (rotation doesn't affect overlap calculation).
 
 ---
 
