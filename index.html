@@ -499,14 +499,24 @@ function landBlock() {
 
 function missBlock(fb) {
   if (fb) {
-    // Create falling debris — inherit rotation from falling block
-    const dir = fb.x + BS/2 < W/2 ? -1 : 1;
+    // Missed block becomes debris — inherits ALL physics from falling block:
+    // - gravity continues pulling it down
+    // - horizontal velocity (swing inertia) is preserved
+    // - rotation continues with slight extra spin
+    // The block falls off the tower edge realistically and exits the
+    // bottom of the screen.
     const curRot = fb.rotation || 0;
+    const curVx = fb.vx || 0;
+    // If block was nearly stationary, give it a nudge off the tower edge
+    const dir = fb.x + BS/2 < W/2 ? -1 : 1;
+    const nudge = Math.abs(curVx) < 20 ? dir * 60 : 0;
     debris.push({
       x: fb.x, y: fb.y, width: BS, height: BS,
       color: fb.color,
-      vx: dir * (80 + Math.abs(fb.vx)), vy: -50,
-      rot: curRot, vr: dir * (3 + Math.random() * 3)
+      vx: curVx + nudge,
+      vy: fb.vy || 0, // inherit downward velocity from fall
+      rot: curRot,
+      vr: (fb.angularVel || 0) + dir * (1.5 + Math.random() * 2)
     });
   }
 
@@ -1255,10 +1265,14 @@ function drawDebris() {
     const dy = d.y + BS/2 - camera.y + shake.y;
     ctx.translate(dx, dy);
     ctx.rotate(d.rot);
-    ctx.globalAlpha = 0.7;
     ctx.fillStyle = d.color;
     ctx.fillRect(-BS/2, -BS/2, BS, BS);
-    ctx.globalAlpha = 1;
+    // Bottom shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.15)';
+    ctx.fillRect(-BS/2, BS/2 - 3, BS, 3);
+    // Top highlight
+    ctx.fillStyle = 'rgba(255,255,255,0.2)';
+    ctx.fillRect(-BS/2, -BS/2, BS, 2);
     ctx.restore();
   }
 }
