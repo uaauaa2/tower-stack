@@ -90,6 +90,26 @@ A Tower Bloxx-style casual web game: a crane swings a block on a cable, you tap 
 
 - **FR-14:** Falling block is rendered in **world space** (no wobble transform). It is not attached to the tower, so wobble does not affect it. This ensures visual position = physics position = collision position at all times.
 
+### Release Trajectory Physics (Testable)
+
+- **FR-15T:** At release, the block's horizontal velocity equals the pendulum tangential velocity: `vx = maxAngle × swingSpeed × cos(time × swingSpeed) × cableLength`. This is the **inertia from the swing** — no additional forces are applied horizontally during free fall.
+
+- **FR-16T:** After release, horizontal velocity is **constant** (no air drag). The block drifts horizontally by `vx × fallDuration` pixels during its fall.
+
+- **FR-17T:** Vertical motion follows pure free fall: `y(t) = y0 + ½ × gravity × t²`. Vertical velocity increases linearly: `vy(t) = gravity × t`.
+
+- **FR-18T:** The combined trajectory is a **parabola**: `x(t) = x0 + vx × t`, `y(t) = y0 + ½ × g × t²`. No horizontal forces, constant gravity. This must hold for all release points and all amplitudes.
+
+- **FR-19T:** **Energy is conserved** during free fall. Total mechanical energy `E = ½(vx² + vy²) + g × y` remains constant throughout the trajectory (gravity is conservative, no dissipation on translation). Rotation spring-damper does NOT affect translational energy.
+
+- **FR-20T:** At the **extreme of swing** (angle = ±maxAngle), horizontal velocity is **zero** (`cos(π/2) = 0`). Block falls straight down from its displaced position with full tilt rotation.
+
+- **FR-21T:** At the **center of swing** (angle = 0), horizontal velocity is **maximum** (`cos(0) = 1`). Block moves purely horizontally with no initial tilt.
+
+- **FR-22T:** Rotation evolves as a damped harmonic oscillator: `θ'' + fallAngularDamping × θ' + fallRestoringSpring × θ = 0`. The analytical solution is `θ(t) = e^(-γt/2) × (A cos(ωd × t) + B sin(ωd × t))` where `ωd = √(k - (γ/2)²)`. The simulated rotation must match this analytical solution within tolerance.
+
+- **FR-23T:** The physics must hold for **all amplitudes** (5°–20°) and **all release phases** (extreme, center, quarter points) — tested via matrix of amplitude × phase × time checkpoint.
+
 ### Miss / Lives
 
 - **FR-15:** Block considered "missed" if < 30% overlap with tower top. Block falls off with rotation (inherited from current tilt).
@@ -164,6 +184,10 @@ A Tower Bloxx-style casual web game: a crane swings a block on a cable, you tap 
 - **SC-09:** Falling block rotation straightens naturally during fall.
 - **SC-10:** Collision detection and visual position are always consistent (world-space).
 - **SC-11:** Works as Telegram Mini App with optional SDK.
+- **SC-12:** Block trajectory after release is a perfect parabola for all amplitudes (5°–20°) and all release phases (8 key points tested). Position error < 2px at 7 time checkpoints.
+- **SC-13:** Energy is conserved during free fall (relative error < 0.1%) for all amplitude/phase combinations.
+- **SC-14:** Rotation dynamics match the analytical damped harmonic oscillator solution within 0.02 rad tolerance.
+- **SC-15:** Horizontal velocity remains constant during fall (drift < 0.01 px/s over 0.5s).
 
 ---
 

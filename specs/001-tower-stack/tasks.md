@@ -36,6 +36,17 @@
 
 ---
 
+## Phase 1.5: Physics Autotests (branch: physics-optimize)
+
+- [x] T16a: Test release trajectory — parabola verification for all amplitudes (5°–20°) × release phases (8 points) × time checkpoints (7 points)
+- [x] T16b: Test energy conservation during free fall
+- [x] T16c: Test rotation spring-damper against analytical solution
+- [x] T16d: Test horizontal velocity conservation (no air drag)
+- [x] T16e: Test boundary cases (zero amplitude, max velocity, extreme angle, tiny amplitude)
+- [x] T16f: Update SpecKit spec with testable physics requirements (FR-15T through FR-23T, SC-12 through SC-15)
+
+---
+
 ## Phase 2: Telegram Integration
 
 - [ ] T17: Telegram WebApp SDK integration *(dep: T1-T16)*
