@@ -427,8 +427,17 @@ gh api -X POST repos/uaauaa2/tower-stack/pages -f build_type=legacy -f source[br
   wobble-transformed space, ensuring the player sees accurate alignment
   at the point of contact. Overlap physics uses raw world coordinates for
   both block and tower top; the same wobble rotation is applied during
-  rendering so visual overlap = physics overlap. (Verified by
-  `tests/test-wobble-alignment.js`.)
+  rendering so visual overlap = physics overlap.
+  (Verified by `tests/test-wobble-alignment.js`.)
+- **Wobble × Swing direction matrix**: tested all combinations of swing
+  direction (left/right), wobble direction (same/opposing), and amplitudes
+  (small 1-3°, medium 4-8°, large 8-15°, extreme 15-25°) across multiple
+  tower heights (5-40 floors). Verified:
+  - Visual ↔ physics alignment at contact point for all combos (336 tests)
+  - Correct land/miss classification with 30% overlap threshold (15 tests)
+  - Pixel-level rendering accuracy for SAME and OPPOSING directions (10 tests)
+  - Swing momentum + wobble landing accuracy with drift (10 tests)
+  (Verified by `tests/test-wobble-swing-matrix.js`.)
 
 ### Performance
 - 60fps with wobble physics + background rendering
