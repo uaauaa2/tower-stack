@@ -423,6 +423,12 @@ gh api -X POST repos/uaauaa2/tower-stack/pages -f build_type=legacy -f source[br
 - Camera keeps last 3.5 blocks visible
 - Background changes with height
 - Tower wobble accumulates; only reduces on accurate placements
+- **Wobble visual alignment**: falling block and tower are drawn in the same
+  wobble-transformed space, ensuring the player sees accurate alignment
+  at the point of contact. Overlap physics uses raw world coordinates for
+  both block and tower top; the same wobble rotation is applied during
+  rendering so visual overlap = physics overlap. (Verified by
+  `tests/test-wobble-alignment.js`.)
 
 ### Performance
 - 60fps with wobble physics + background rendering
@@ -435,6 +441,6 @@ gh api -X POST repos/uaauaa2/tower-stack/pages -f build_type=legacy -f source[br
 
 ---
 
-*Spec version: 2.0*
-*Updated: 2026-05-09*
-*Changes: Block size 90px (1.5×), 3.5 visible blocks, fixed cable = 4× block height, crane may be off-screen*
+*Spec version: 2.1*
+*Updated: 2026-05-11*
+*Changes v2.1: Fixed falling block wobble rendering — drawFallingBlock now applies same wobble transform as drawTower for visual↔physics alignment*

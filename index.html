@@ -386,11 +386,11 @@ function landBlock() {
   if (!top) { missBlock(); return; }
 
   // Calculate overlap in world coordinates.
-  // The falling block is now drawn in wobble space (drawFallingBlock),
-  // so the player sees accurate alignment. At the moment of collision
-  // (fb.y + BS ≈ top.y), the Y positions are nearly identical, so the
-  // wobble rotation affects both block and tower top almost equally.
-  // The residual error is BS × sin(wobble.angle) ≈ 2-3px at most.
+  // Both the falling block and the tower top share the same raw (world)
+  // X coordinate, so overlap is simply compared in world space.
+  // The visual rendering applies the same wobble transform to both
+  // (drawTower + drawFallingBlock), so what the player sees matches
+  // the physics result.
   const oL = Math.max(fb.x, top.x);
   const oR = Math.min(fb.x + BS, top.x + BS);
   const overlapW = oR - oL;
@@ -1205,10 +1205,29 @@ function drawFallingBlock() {
   if (!fallingBlock) return;
   const rot = fallingBlock.rotation || 0;
 
-  // Block is in the air — NOT part of the tower, so no wobble transform.
-  // Draw in world space (with shake only) for consistent physics↔visual alignment.
+  // Draw in the SAME wobble space as the tower so the player sees
+  // accurate alignment between the falling block and the tower top.
+  // The overlap calculation in landBlock() uses raw (world) coordinates
+  // for both block and tower top — applying the same wobble transform
+  // here preserves visual↔physics consistency.
+  //
+  // Without this, a large wobble angle rotates the tower visually but
+  // NOT the falling block, causing a mismatch of up to a full block width.
+
+  const base = tower[0];
+  const pivotX = base.x + BS / 2;
+  const pivotY = base.y + BS;
+
   ctx.save();
-  ctx.translate(shake.x, 0);
+
+  // Apply the SAME wobble transform as drawTower()
+  if (Math.abs(wobble.angle) > 0.001) {
+    ctx.translate(pivotX + shake.x, pivotY - camera.y + shake.y);
+    ctx.rotate(wobble.angle);
+    ctx.translate(-pivotX, -(pivotY - camera.y));
+  } else {
+    ctx.translate(shake.x, 0);
+  }
 
   const bx = fallingBlock.x + BS / 2;
   const by = fallingBlock.y + BS / 2 - camera.y;
