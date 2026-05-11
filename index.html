@@ -383,7 +383,7 @@ function getWobblePivot() {
 function landBlock() {
   const fb = fallingBlock;
   const top = getTowerTop();
-  if (!top) { missBlock(); return; }
+  if (!top) { missBlock(null); return; }
 
   // Calculate overlap in world coordinates.
   // Both the falling block and the tower top share the same raw (world)
@@ -398,13 +398,13 @@ function landBlock() {
 
   if (overlapW <= 0) {
     // Complete miss
-    missBlock(fb);
+    missBlock(fb, 0);
     return;
   }
 
   // Check if overlap < 30% = miss
   if (overlapRatio < CFG.missOverlapRatio) {
-    missBlock(fb);
+    missBlock(fb, overlapW);
     return;
   }
 
@@ -497,27 +497,42 @@ function landBlock() {
   spawnCrane();
 }
 
-function missBlock(fb) {
+function missBlock(fb, overlapPx) {
   if (fb) {
-    // Missed block becomes debris — inherits ALL physics from falling block:
-    // - gravity continues pulling it down
-    // - horizontal velocity (swing inertia) is preserved
-    // - rotation continues with slight extra spin
-    // The block falls off the tower edge realistically and exits the
-    // bottom of the screen.
     const curRot = fb.rotation || 0;
     const curVx = fb.vx || 0;
-    // If block was nearly stationary, give it a nudge off the tower edge
-    const dir = fb.x + BS/2 < W/2 ? -1 : 1;
-    const nudge = Math.abs(curVx) < 20 ? dir * 60 : 0;
-    debris.push({
-      x: fb.x, y: fb.y, width: BS, height: BS,
-      color: fb.color,
-      vx: curVx + nudge,
-      vy: fb.vy || 0, // inherit downward velocity from fall
-      rot: curRot,
-      vr: (fb.angularVel || 0) + dir * (1.5 + Math.random() * 2)
-    });
+    const top = getTowerTop();
+
+    if (overlapPx > 0 && top) {
+      // Partial overlap (edge hit) — block slides off the tower side.
+      // It hits the edge and bounces outward with an upward kick,
+      // then falls down alongside the tower.
+      const hitLeft = fb.x < top.x; // block is to the left of tower
+      const dir = hitLeft ? -1 : 1;
+      const pushSpeed = 100 + Math.random() * 60; // horizontal push off edge
+      const bounceVy = -120 - Math.random() * 60; // upward bounce from impact
+
+      debris.push({
+        x: fb.x, y: fb.y, width: BS, height: BS,
+        color: fb.color,
+        vx: curVx * 0.3 + dir * pushSpeed, // dampen inherited vx, add push
+        vy: (fb.vy || 0) * 0.2 + bounceVy,  // mostly bounce up
+        rot: curRot,
+        vr: dir * (2 + Math.random() * 3)
+      });
+    } else {
+      // Complete miss — block flies past, inherits all physics
+      const dir = fb.x + BS/2 < W/2 ? -1 : 1;
+      const nudge = Math.abs(curVx) < 20 ? dir * 60 : 0;
+      debris.push({
+        x: fb.x, y: fb.y, width: BS, height: BS,
+        color: fb.color,
+        vx: curVx + nudge,
+        vy: fb.vy || 0,
+        rot: curRot,
+        vr: (fb.angularVel || 0) + dir * (1.5 + Math.random() * 2)
+      });
+    }
   }
 
   lives--;
@@ -763,7 +778,7 @@ function update(dt) {
 
     // Fell way below
     if (fallingBlock && fallingBlock.y > camera.y + H + 200) {
-      missBlock(fallingBlock);
+      missBlock(fallingBlock, 0);
     }
   }
 

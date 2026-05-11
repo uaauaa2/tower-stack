@@ -112,7 +112,10 @@ A Tower Bloxx-style casual web game: a crane swings a block on a cable, you tap 
 
 ### Miss / Lives
 
-- **FR-15:** Block considered "missed" if < 30% overlap with tower top. On miss, the block becomes debris that **inherits all physics** from the falling block: current position, velocity (vx from swing inertia, vy from gravity), rotation, and angular velocity. A slight extra spin is added for visual flair. The block falls off the tower edge and continues until it exits below the visible screen area. Debris is rendered as a solid block (not transparent) with the same shadow/highlight as tower blocks, maintaining visual continuity.
+- **FR-15:** Block considered "missed" if < 30% overlap with tower top. Two scenarios:
+  - **Edge hit** (partial overlap, 0–30%): block strikes the tower edge and **bounces outward**. A horizontal push (100–160 px/s) sends it sideways away from the tower, and a small upward bounce (–120 to –180 px/s) creates a visible impact. Inherited velocity is dampened (30% vx, 20% vy) so the bounce dominates. The block then falls alongside the tower and exits below the screen.
+  - **Complete miss** (no overlap): block inherits all physics (velocity, rotation) from the fall and continues on its parabolic trajectory off-screen.
+  Debris is rendered as a solid block with shadow/highlight, maintaining visual continuity with tower blocks.
 - **FR-16:** Player has 3 lives. HUD shows ❤️❤️❤️ → ❤️❤️🖤 → ❤️🖤🖤 → GAME OVER.
 - **FR-17:** Miss resets combo to 0 but doesn't immediately end game.
 
