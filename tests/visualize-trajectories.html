@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin: 0; padding: 0; }
+  body { background: #0d1117; color: #e6edf3; font-family: system-ui; padding: 20px; }
+  h1 { text-align: center; font-size: 22px; margin-bottom: 8px; color: #58a6ff; }
+  .subtitle { text-align: center; font-size: 13px; color: #8b949e; margin-bottom: 16px; }
+  canvas { display: block; margin: 0 auto; border-radius: 8px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin-top: 12px; font-size: 12px; }
+  .legend-item { display: flex; align-items: center; gap: 4px; }
+  .legend-dot { width: 12px; height: 12px; border-radius: 2px; }
+</style>
+</head>
+<body>
+<h1>Block Trajectory After Cable Release</h1>
+<div class="subtitle">First 10 test scenarios — 5 amplitudes × 2 release phases</div>
+<canvas id="c" width="800" height="900"></canvas>
+<div class="legend" id="legend"></div>
+<script>
+const BS = 90;
+const GRAVITY = 2000;
+const SWING_SPEED = Math.PI;
+const CABLE_LENGTH = BS * 4;
+const PIVOT_X = 400;
+const PIVOT_Y = 60;
+
+const ctx = document.getElementById('c').getContext('2d');
+ctx.fillStyle = '#0d1117';
+ctx.fillRect(0, 0, 800, 900);
+
+// Colors for amplitudes
+const ampColors = [
+  { label: '5°',  color: '#6BCB77', light: '#8FE09B' },
+  { label: '8°',  color: '#FFD93D', light: '#FFE680' },
+  { label: '12°', color: '#4D96FF', light: '#80B3FF' },
+  { label: '15°', color: '#C084FC', light: '#D4ABFF' },
+  { label: '20°', color: '#FF6B6B', light: '#FF9E9E' },
+];
+
+const phases = [
+  { label: 'Extreme-R', phase: Math.PI / 2, desc: 'max angle, vx≈0' },
+  { label: 'Extreme-L', phase: -Math.PI / 2, desc: 'max angle, vx≈0' },
+];
+
+const amps = [
+  5, 8, 12, 15, 20
+].map(d => d * Math.PI / 180);
+
+// Draw pivot
+ctx.fillStyle = '#546E7A';
+ctx.fillRect(PIVOT_X - 20, PIVOT_Y - 8, 40, 16);
+
+// Draw grid lines
+ctx.strokeStyle = '#21262d';
+ctx.lineWidth = 1;
+for (let y = PIVOT_Y + CABLE_LENGTH; y < 900; y += BS) {
+  ctx.beginPath();
+  ctx.moveTo(50, y);
+  ctx.lineTo(750, y);
+  ctx.stroke();
+}
+
+// Draw tower top reference line
+const towerTopY = PIVOT_Y + CABLE_LENGTH + BS;
+ctx.strokeStyle = '#FF6B6B44';
+ctx.lineWidth = 2;
+ctx.setLineDash([8, 4]);
+ctx.beginPath();
+ctx.moveTo(50, towerTopY);
+ctx.lineTo(750, towerTopY);
+ctx.stroke();
+ctx.setLineDash([]);
+ctx.fillStyle = '#FF6B6B88';
+ctx.font = '11px system-ui';
+ctx.fillText('Tower top (landing zone)', 55, towerTopY - 5);
+
+// Scale: 1px = 1px, but we need to fit trajectories
+// Tower top is at PIVOT_Y + CABLE_LENGTH + BS = 60 + 360 + 90 = 510
+// Block releases from ~hookY which is PIVOT_Y + CABLE_LENGTH ≈ 420
+// At t=0.5s, y = 420 + 0.5*2000*0.25 = 670 — fits in canvas
+
+let legendHTML = '';
+let testIdx = 0;
+
+for (let ai = 0; ai < amps.length; ai++) {
+  for (let pi = 0; pi < phases.length; pi++) {
+    const amp = amps[ai];
+    const phase = phases[pi].phase;
+    const color = ampColors[ai].color;
+    const light = ampColors[ai].light;
+    testIdx++;
+
+    const angle = amp * Math.sin(phase);
+    const angVel = amp * SWING_SPEED * Math.cos(phase);
+    const vx = angVel * CABLE_LENGTH;
+
+    // Hook position
+    const hookX = PIVOT_X + Math.sin(angle) * CABLE_LENGTH;
+    const hookY = PIVOT_Y + Math.cos(angle) * CABLE_LENGTH;
+
+    // Block center at release
+    const cx = hookX + (BS / 2) * Math.sin(angle);
+    const cy = hookY + (BS / 2) * Math.cos(angle);
+
+    // Draw cable (faint)
+    ctx.strokeStyle = color + '30';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(PIVOT_X, PIVOT_Y);
+    ctx.lineTo(hookX, hookY);
+    ctx.stroke();
+
+    // Draw trajectory
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+
+    const maxT = 0.45;
+    const steps = 100;
+    for (let i = 1; i <= steps; i++) {
+      const t = (i / steps) * maxT;
+      const x = cx + vx * t;
+      const y = cy + 0.5 * GRAVITY * t * t;
+      ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    // Draw block at release point
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(-angle);
+    ctx.strokeStyle = light;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(-BS / 2, -BS / 2, BS, BS);
+    ctx.restore();
+
+    // Draw block at t=0.2s (mid-flight)
+    const t2 = 0.2;
+    const mx = cx + vx * t2;
+    const my = cy + 0.5 * GRAVITY * t2 * t2;
+    const rot2 = -angle; // simplified (ignoring spring for visual)
+    ctx.save();
+    ctx.translate(mx, my);
+    ctx.globalAlpha = 0.4;
+    ctx.strokeStyle = light;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 3]);
+    ctx.strokeRect(-BS / 2, -BS / 2, BS, BS);
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 1;
+    ctx.restore();
+
+    // Velocity arrow at release
+    const arrowScale = 0.15;
+    const arrowLen = Math.sqrt(vx * vx) * arrowScale;
+    if (Math.abs(vx) > 1) {
+      ctx.strokeStyle = light;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + vx * arrowScale, cy);
+      ctx.stroke();
+      // Arrowhead
+      const dir = Math.sign(vx);
+      ctx.beginPath();
+      ctx.moveTo(cx + vx * arrowScale, cy);
+      ctx.lineTo(cx + vx * arrowScale - dir * 8, cy - 5);
+      ctx.lineTo(cx + vx * arrowScale - dir * 8, cy + 5);
+      ctx.closePath();
+      ctx.fillStyle = light;
+      ctx.fill();
+    }
+
+    // Label
+    ctx.fillStyle = light;
+    ctx.font = 'bold 11px system-ui';
+    ctx.fillText(`#${testIdx}: ${ampColors[ai].label} ${phases[pi].label}`, cx + (vx > 0 ? BS/2 + 4 : -BS/2 - 100), cy - 4);
+    ctx.font = '10px system-ui';
+    ctx.fillStyle = '#8b949e';
+    ctx.fillText(`vx=${vx.toFixed(0)} px/s`, cx + (vx > 0 ? BS/2 + 4 : -BS/2 - 80), cy + 10);
+
+    legendHTML += `<div class="legend-item"><div class="legend-dot" style="background:${color}"></div>#${testIdx}: ${ampColors[ai].label} ${phases[pi].label}</div>`;
+  }
+}
+
+// Draw axis labels
+ctx.fillStyle = '#8b949e';
+ctx.font = '11px system-ui';
+ctx.fillText('← Left', 55, 880);
+ctx.fillText('Right →', 700, 880);
+ctx.fillText('↓ Gravity (2000 px/s²)', 55, 870);
+
+// Title for each row
+ctx.fillStyle = '#58a6ff88';
+ctx.font = 'bold 12px system-ui';
+for (let pi = 0; pi < phases.length; pi++) {
+  const x = pi === 0 ? 120 : 650;
+  ctx.fillText(phases[pi].label, x, PIVOT_Y + 30);
+  ctx.font = '11px system-ui';
+  ctx.fillStyle = '#8b949e88';
+  ctx.fillText(`(${phases[pi].desc})`, x, PIVOT_Y + 45);
+  ctx.fillStyle = '#58a6ff88';
+  ctx.font = 'bold 12px system-ui';
+}
+
+document.getElementById('legend').innerHTML = legendHTML;
+</script>
+</body>
+</html>

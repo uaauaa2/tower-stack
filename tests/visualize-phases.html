@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin: 0; padding: 0; }
+  body { background: #0d1117; color: #e6edf3; font-family: system-ui; padding: 20px; }
+  h1 { text-align: center; font-size: 20px; margin-bottom: 4px; color: #58a6ff; }
+  .subtitle { text-align: center; font-size: 12px; color: #8b949e; margin-bottom: 12px; }
+  canvas { display: block; margin: 0 auto; border-radius: 8px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 10px; font-size: 11px; }
+  .legend-item { display: flex; align-items: center; gap: 4px; }
+  .legend-dot { width: 12px; height: 12px; border-radius: 2px; }
+</style>
+</head>
+<body>
+<h1>All 8 Release Phases — 12° Amplitude</h1>
+<div class="subtitle">How swing position affects trajectory direction and velocity</div>
+<canvas id="c" width="800" height="1000"></canvas>
+<div class="legend" id="legend"></div>
+<script>
+const BS = 90;
+const GRAVITY = 2000;
+const SWING_SPEED = Math.PI;
+const CABLE_LENGTH = BS * 4;
+const PIVOT_X = 400;
+const PIVOT_Y = 50;
+
+const ctx = document.getElementById('c').getContext('2d');
+ctx.fillStyle = '#0d1117';
+ctx.fillRect(0, 0, 800, 1000);
+
+const phases = [
+  { label: '1. Extreme-R',    phase: Math.PI / 2,        color: '#FF6B6B', desc: 'angle=max, vx=0' },
+  { label: '2. Quarter-R-up', phase: Math.PI / 4,        color: '#FFA07A', desc: 'moving right-up' },
+  { label: '3. Center-R',     phase: 0,                   color: '#FFD93D', desc: 'angle=0, vx=max→' },
+  { label: '4. Quarter-R-dn', phase: 3*Math.PI/4,        color: '#6BCB77', desc: 'moving right-dn' },
+  { label: '5. Extreme-L',    phase: -Math.PI / 2,       color: '#4D96FF', desc: 'angle=max, vx=0' },
+  { label: '6. Quarter-L-up', phase: -Math.PI / 4,       color: '#66D9EF', desc: 'moving left-up' },
+  { label: '7. Center-L',     phase: Math.PI,            color: '#C084FC', desc: 'angle=0, vx=max←' },
+  { label: '8. Quarter-L-dn', phase: -3*Math.PI/4,       color: '#FF79C6', desc: 'moving left-dn' },
+];
+
+const amp = 12 * Math.PI / 180;
+
+// Draw pivot
+ctx.fillStyle = '#546E7A';
+ctx.fillRect(PIVOT_X - 25, PIVOT_Y - 8, 50, 16);
+ctx.fillStyle = '#8b949e';
+ctx.font = '10px system-ui';
+ctx.textAlign = 'center';
+ctx.fillText('CRANE PIVOT', PIVOT_X, PIVOT_Y - 14);
+ctx.textAlign = 'left';
+
+// Grid
+ctx.strokeStyle = '#21262d';
+ctx.lineWidth = 1;
+for (let y = PIVOT_Y + CABLE_LENGTH; y < 1000; y += BS) {
+  ctx.beginPath(); ctx.moveTo(50, y); ctx.lineTo(750, y); ctx.stroke();
+}
+
+// Tower top reference
+const towerTopY = PIVOT_Y + CABLE_LENGTH + BS;
+ctx.strokeStyle = '#FF6B6B44';
+ctx.lineWidth = 2;
+ctx.setLineDash([8, 4]);
+ctx.beginPath(); ctx.moveTo(30, towerTopY); ctx.lineTo(770, towerTopY); ctx.stroke();
+ctx.setLineDash([]);
+ctx.fillStyle = '#FF6B6B88';
+ctx.font = '11px system-ui';
+ctx.fillText('⬆ Tower top (landing zone)', 35, towerTopY - 6);
+
+let legendHTML = '';
+
+// Draw swing arc (pendulum path) faintly
+ctx.strokeStyle = '#30363d';
+ctx.lineWidth = 1;
+ctx.beginPath();
+const arcCenterY = PIVOT_Y + CABLE_LENGTH;
+ctx.arc(PIVOT_X, PIVOT_Y, CABLE_LENGTH, Math.PI/2 - amp * 1.3, Math.PI/2 + amp * 1.3);
+ctx.stroke();
+
+phases.forEach((p, idx) => {
+  const angle = amp * Math.sin(p.phase);
+  const angVel = amp * SWING_SPEED * Math.cos(p.phase);
+  const vx = angVel * CABLE_LENGTH;
+
+  const hookX = PIVOT_X + Math.sin(angle) * CABLE_LENGTH;
+  const hookY = PIVOT_Y + Math.cos(angle) * CABLE_LENGTH;
+  const cx = hookX + (BS / 2) * Math.sin(angle);
+  const cy = hookY + (BS / 2) * Math.cos(angle);
+
+  // Cable
+  ctx.strokeStyle = p.color + '25';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(PIVOT_X, PIVOT_Y); ctx.lineTo(hookX, hookY); ctx.stroke();
+
+  // Trajectory
+  ctx.strokeStyle = p.color;
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  const maxT = 0.5;
+  for (let i = 1; i <= 120; i++) {
+    const t = (i / 120) * maxT;
+    ctx.lineTo(cx + vx * t, cy + 0.5 * GRAVITY * t * t);
+  }
+  ctx.stroke();
+
+  // Block at release
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(-angle);
+  ctx.strokeStyle = p.color;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(-BS / 2, -BS / 2, BS, BS);
+  ctx.restore();
+
+  // Velocity arrow
+  const arrowScale = 0.12;
+  if (Math.abs(vx) > 5) {
+    ctx.strokeStyle = p.color;
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + vx * arrowScale, cy); ctx.stroke();
+    const dir = Math.sign(vx);
+    ctx.beginPath();
+    ctx.moveTo(cx + vx * arrowScale, cy);
+    ctx.lineTo(cx + vx * arrowScale - dir * 7, cy - 4);
+    ctx.lineTo(cx + vx * arrowScale - dir * 7, cy + 4);
+    ctx.closePath();
+    ctx.fillStyle = p.color;
+    ctx.fill();
+  }
+
+  // Label near release point
+  const labelX = cx + (vx >= 0 ? BS/2 + 6 : -BS/2 - 6);
+  ctx.fillStyle = p.color;
+  ctx.font = 'bold 11px system-ui';
+  ctx.textAlign = vx >= 0 ? 'left' : 'right';
+  ctx.fillText(p.label, labelX, cy + 4);
+  ctx.font = '10px system-ui';
+  ctx.fillStyle = '#8b949e';
+  ctx.fillText(p.desc, labelX, cy + 17);
+  ctx.fillText(`vx=${vx.toFixed(0)}`, labelX, cy + 29);
+  ctx.textAlign = 'left';
+
+  // Small dot at t=0.3s position
+  const t3 = 0.3;
+  const dx = cx + vx * t3;
+  const dy = cy + 0.5 * GRAVITY * t3 * t3;
+  ctx.fillStyle = p.color;
+  ctx.beginPath(); ctx.arc(dx, dy, 4, 0, Math.PI * 2); ctx.fill();
+
+  legendHTML += `<div class="legend-item"><div class="legend-dot" style="background:${p.color}"></div>${p.label} (${p.desc})</div>`;
+});
+
+document.getElementById('legend').innerHTML = legendHTML;
+</script>
+</body>
+</html>
