@@ -282,6 +282,8 @@ if (TelegramWebApp) {
   TelegramWebApp.ready();
   TelegramWebApp.expand();
   console.log('[TG] WebApp ready, theme:', TelegramWebApp.colorScheme);
+  // Warm up backend
+  fetch(API.baseUrl + '/api/health').then(r => r.json()).then(d => console.log('[API] Warmup:', d)).catch(e => console.log('[API] Warmup failed:', e.message));
 }
 
 // ============================================================
@@ -341,11 +343,15 @@ const API = {
         theme: activeTheme,
       };
       console.log('[API] Submitting score to', this.baseUrl, payload);
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
       const res = await fetch(`${this.baseUrl}/api/score`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
+        signal: controller.signal,
       });
+      clearTimeout(timeout);
       const text = await res.text();
       console.log('[API] Response:', res.status, text);
       if (!res.ok) return null;
@@ -769,6 +775,7 @@ function gameOver() {
           console.log('[API] submitScore returned null');
         }
       }).catch(err => {
+        window._lastApiError = err.name === 'AbortError' ? 'timeout' : err.message;
         console.log('[API] submitScore error:', err);
       });
     } else {
@@ -2403,8 +2410,12 @@ function drawGameOver() {
 
   // Show API status
   const apiResult = window._lastApiResult;
+  const apiError = window._lastApiError;
   const tgStatus = API.isTelegram() ? '✅ TG' : '❌ no TG';
-  const submitStatus = apiResult ? `✅ Rank #${apiResult.rank}` : (API.isTelegram() ? '⏳ sending...' : '');
+  let submitStatus = '';
+  if (apiResult) submitStatus = `✅ Rank #${apiResult.rank}`;
+  else if (apiError) submitStatus = `❌ ${apiError}`;
+  else if (API.isTelegram()) submitStatus = '⏳ sending...';
   ctx.fillStyle = '#FFD700';
   ctx.font = `bold ${su * 0.55}px ${th.fontFamily}`;
   ctx.fillText(`${tgStatus} ${submitStatus}`, W/2, cardY + su * 8.6);
