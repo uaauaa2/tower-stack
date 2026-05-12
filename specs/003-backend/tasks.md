@@ -8,24 +8,24 @@
 
 ## Phase 1: Backend Core
 
-- [ ] T-B01: Scaffold `backend/` — `main.py`, `requirements.txt`, `render.yaml`
-- [ ] T-B02: `database.py` — SQLite schema init (players, games, achievements tables)
-- [ ] T-B03: `auth.py` — Telegram initData HMAC-SHA256 validation
-- [ ] T-B04: `models.py` — Pydantic request/response models
-- [ ] T-B05: `POST /api/score` — save game, update player, check achievements
-- [ ] T-B06: `GET /api/leaderboard` — top N with all-time/weekly filter
-- [ ] T-B07: `GET /api/stats` — aggregate player statistics
-- [ ] T-B08: `GET /api/health` — health check endpoint
-- [ ] T-B09: CORS config — allow GitHub Pages + Telegram origins
+- [x] T-B01: Scaffold `backend/` — `main.py`, `requirements.txt`, `render.yaml`
+- [x] T-B02: `database.py` — SQLite schema init (players, games, achievements tables)
+- [x] T-B03: `auth.py` — Telegram initData HMAC-SHA256 validation
+- [x] T-B04: `models.py` — Pydantic request/response models
+- [x] T-B05: `POST /api/score` — save game, update player, check achievements
+- [x] T-B06: `GET /api/leaderboard` — top N with all-time/weekly filter
+- [x] T-B07: `GET /api/stats` — aggregate player statistics
+- [x] T-B08: `GET /api/health` — health check endpoint
+- [x] T-B09: CORS config — allow GitHub Pages + Telegram origins
 - [ ] T-B10: Deploy to Render.com — connect repo, set env vars, verify health
 
 ## Phase 2: Telegram Bot
 
-- [ ] T-B11: Create new bot via BotFather, get token
-- [ ] T-B12: `bot.py` — webhook endpoint on FastAPI, route updates
-- [ ] T-B13: `/play` handler — reply with game link + inline keyboard
-- [ ] T-B14: `/top` handler — query top-5, format as text leaderboard
-- [ ] T-B15: `/stats` handler — query player stats, format reply
+- [x] T-B11: Create new bot via BotFather, get token
+- [x] T-B12: `bot.py` — webhook endpoint on FastAPI, route updates
+- [x] T-B13: `/play` handler — reply with game link + inline keyboard
+- [x] T-B14: `/top` handler — query top-5, format as text leaderboard
+- [x] T-B15: `/stats` handler — query player stats, format reply
 - [ ] T-B16: Set bot commands, menu button, Mini App URL via BotFather API
 - [ ] T-B17: Test all bot commands end-to-end
 
@@ -55,8 +55,8 @@
 
 | Phase | Total | Done | % |
 |-------|-------|------|---|
-| Phase 1: Backend Core | 10 | 0 | 0% |
-| Phase 2: Telegram Bot | 7 | 0 | 0% |
+| Phase 1: Backend Core | 10 | 9 | 90% |
+| Phase 2: Telegram Bot | 7 | 5 | 71% |
 | Phase 3: Frontend | 8 | 0 | 0% |
 | Phase 4: Achievements | 6 | 0 | 0% |
-| **Total** | **31** | **0** | **0%** |
+| **Total** | **31** | **14** | **45%** |
