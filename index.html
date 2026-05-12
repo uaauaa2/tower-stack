@@ -245,6 +245,7 @@ class Particle {
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 let W, H, DPR;
+let BS = CFG.blockSize; // updated in applySettings & resize
 
 function resize() {
   DPR = window.devicePixelRatio || 1;
@@ -292,7 +293,7 @@ let cityTouchLastX = 0;
 let cityDragging = false;
 let buttons = [];
 
-let BS = CFG.blockSize; // updated in applySettings
+// BS is declared above with canvas setup
 
 // ============================================================
 // HELPERS
