@@ -1182,112 +1182,96 @@ function buildSpritePixel(c, color, isPerfect, S) {
   }
 }
 
-// Floating background objects
+// Floating background objects — WORLD-SPACE positions
+// Objects are placed at world Y coordinates relative to the tower.
+// As the camera follows the tower upward, lower objects scroll down
+// and new objects at higher altitudes come into view.
 let bgObjects = [];
+
+// Each zone defines a floor range and the objects that spawn within it.
+// Objects have worldY = tower[0].y - (floorOffset * BS), so they live
+// at a fixed height above the ground and scroll naturally with the camera.
+const BG_ZONE_DEFS = [
+  // Zone 0: Ground (floors 0–10)
+  { zone: 0, spawns: [
+    { type: 'tree', count: 10, floorMin: 0, floorMax: 8, sizeRange: [15, 35], speedRange: [0.2, 0.5] },
+    { type: 'cloud', count: 5, floorMin: 1, floorMax: 10, sizeRange: [0.5, 1.0], speedRange: [5, 12] },
+    { type: 'bird', count: 5, floorMin: 2, floorMax: 10, sizeRange: [1, 1], speedRange: [15, 30] },
+    { type: 'kite', count: 2, floorMin: 3, floorMax: 8, sizeRange: [1, 1], speedRange: [2, 5] },
+    { type: 'balloon', count: 2, floorMin: 4, floorMax: 10, sizeRange: [1, 1.3], speedRange: [3, 7] },
+  ]},
+  // Zone 1: Low sky (floors 10–20)
+  { zone: 1, spawns: [
+    { type: 'cloud', count: 6, floorMin: 10, floorMax: 20, sizeRange: [0.6, 1.2], speedRange: [4, 10] },
+    { type: 'bird', count: 4, floorMin: 10, floorMax: 18, sizeRange: [1, 1], speedRange: [12, 25] },
+    { type: 'balloon', count: 3, floorMin: 10, floorMax: 20, sizeRange: [0.8, 1.2], speedRange: [4, 8] },
+    { type: 'helicopter', count: 2, floorMin: 12, floorMax: 20, sizeRange: [1, 1], speedRange: [10, 20] },
+  ]},
+  // Zone 2: Cloud layer (floors 20–30)
+  { zone: 2, spawns: [
+    { type: 'cloud', count: 10, floorMin: 20, floorMax: 30, sizeRange: [0.8, 1.5], speedRange: [3, 8] },
+    { type: 'bird', count: 2, floorMin: 20, floorMax: 25, sizeRange: [1, 1], speedRange: [10, 18] },
+    { type: 'helicopter', count: 2, floorMin: 22, floorMax: 30, sizeRange: [1, 1], speedRange: [8, 16] },
+  ]},
+  // Zone 3: Above clouds (floors 30–40)
+  { zone: 3, spawns: [
+    { type: 'cloud', count: 4, floorMin: 30, floorMax: 38, sizeRange: [0.4, 0.8], speedRange: [8, 15] },
+    { type: 'plane', count: 3, floorMin: 30, floorMax: 40, sizeRange: [1, 1], speedRange: [25, 45] },
+    { type: 'helicopter', count: 1, floorMin: 30, floorMax: 35, sizeRange: [1, 1], speedRange: [6, 12] },
+  ]},
+  // Zone 4: Stratosphere (floors 40–50)
+  { zone: 4, spawns: [
+    { type: 'plane', count: 3, floorMin: 40, floorMax: 50, sizeRange: [1, 1.2], speedRange: [30, 50] },
+    { type: 'cloud', count: 2, floorMin: 40, floorMax: 45, sizeRange: [0.3, 0.5], speedRange: [10, 18] },
+  ]},
+  // Zone 5: Mesosphere (floors 50–60)
+  { zone: 5, spawns: [
+    { type: 'star', count: 20, floorMin: 50, floorMax: 60, sizeRange: [1, 2.5], speedRange: [0, 0] },
+    { type: 'satellite', count: 2, floorMin: 50, floorMax: 60, sizeRange: [1, 1], speedRange: [8, 15] },
+    { type: 'plane', count: 1, floorMin: 50, floorMax: 55, sizeRange: [0.8, 0.8], speedRange: [35, 50] },
+    { type: 'shootingStar', count: 1, floorMin: 55, floorMax: 60, sizeRange: [1, 1], speedRange: [80, 140] },
+  ]},
+  // Zone 6: Thermosphere (floors 60–70)
+  { zone: 6, spawns: [
+    { type: 'star', count: 30, floorMin: 60, floorMax: 70, sizeRange: [1.5, 3], speedRange: [0, 0] },
+    { type: 'satellite', count: 3, floorMin: 60, floorMax: 70, sizeRange: [1, 1], speedRange: [5, 12] },
+    { type: 'shootingStar', count: 2, floorMin: 62, floorMax: 70, sizeRange: [1, 1], speedRange: [100, 160] },
+    { type: 'aurora', count: 1, floorMin: 65, floorMax: 70, sizeRange: [1, 1], speedRange: [0.5, 1] },
+  ]},
+  // Zone 7: Space (floors 70+)
+  { zone: 7, spawns: [
+    { type: 'star', count: 50, floorMin: 70, floorMax: 90, sizeRange: [2, 4], speedRange: [0, 0] },
+    { type: 'satellite', count: 3, floorMin: 70, floorMax: 85, sizeRange: [1, 1.2], speedRange: [4, 10] },
+    { type: 'shootingStar', count: 3, floorMin: 72, floorMax: 90, sizeRange: [1, 1], speedRange: [120, 200] },
+    { type: 'aurora', count: 2, floorMin: 75, floorMax: 90, sizeRange: [1, 1], speedRange: [0.3, 0.8] },
+    { type: 'ufo', count: 2, floorMin: 78, floorMax: 90, sizeRange: [1, 1], speedRange: [15, 30] },
+  ]},
+];
+
 function initBgObjects() {
   bgObjects = [];
-  // Zone 0: ground — trees, clouds, birds
-  for (let i = 0; i < 10; i++) {
-    bgObjects.push({
-      type: 'tree', x: Math.random() * 500 - 50, baseY: 0,
-      size: 15 + Math.random() * 20, speed: 0.2 + Math.random() * 0.3,
-      phase: Math.random() * Math.PI * 2, zone: 0
-    });
-  }
-  for (let i = 0; i < 4; i++) {
-    bgObjects.push({
-      type: 'cloud', x: Math.random() * 500, baseY: -50 - Math.random() * 150,
-      size: 0.5 + Math.random() * 0.8, speed: 5 + Math.random() * 10,
-      phase: Math.random() * Math.PI * 2, zone: 0
-    });
-  }
-  // Zone 1: low sky — clouds, birds
-  for (let i = 0; i < 5; i++) {
-    bgObjects.push({
-      type: 'cloud', x: Math.random() * 500, baseY: -100 - Math.random() * 200,
-      size: 0.6 + Math.random() * 1.0, speed: 4 + Math.random() * 8,
-      phase: Math.random() * Math.PI * 2, zone: 1
-    });
-  }
-  for (let i = 0; i < 4; i++) {
-    bgObjects.push({
-      type: 'bird', x: Math.random() * 500, baseY: -50 - Math.random() * 200,
-      size: 1, speed: 15 + Math.random() * 20,
-      phase: Math.random() * Math.PI * 2, zone: 1
-    });
-  }
-  // Zone 2: cloud layer — dense clouds
-  for (let i = 0; i < 8; i++) {
-    bgObjects.push({
-      type: 'cloud', x: Math.random() * 500, baseY: -50 - Math.random() * 300,
-      size: 0.8 + Math.random() * 1.2, speed: 3 + Math.random() * 6,
-      phase: Math.random() * Math.PI * 2, zone: 2
-    });
-  }
-  // Zone 3: above clouds — sun, occasional cloud, planes
-  for (let i = 0; i < 2; i++) {
-    bgObjects.push({
-      type: 'cloud', x: Math.random() * 500, baseY: -100 - Math.random() * 150,
-      size: 0.4 + Math.random() * 0.6, speed: 8 + Math.random() * 12,
-      phase: Math.random() * Math.PI * 2, zone: 3
-    });
-  }
-  for (let i = 0; i < 2; i++) {
-    bgObjects.push({
-      type: 'plane', x: Math.random() * 500, baseY: -80 - Math.random() * 150,
-      size: 1, speed: 25 + Math.random() * 20,
-      phase: Math.random() * Math.PI * 2, zone: 3
-    });
-  }
-  // Zone 4: stratosphere — planes
-  for (let i = 0; i < 2; i++) {
-    bgObjects.push({
-      type: 'plane', x: Math.random() * 500, baseY: -100 - Math.random() * 200,
-      size: 1, speed: 30 + Math.random() * 20,
-      phase: Math.random() * Math.PI * 2, zone: 4
-    });
-  }
-  // Zone 5: mesosphere — first stars, satellites
-  for (let i = 0; i < 15; i++) {
-    bgObjects.push({
-      type: 'star', x: Math.random() * 480, baseY: Math.random() * H * 2 - H,
-      size: 1 + Math.random() * 2, speed: 0, phase: Math.random() * Math.PI * 2, zone: 5
-    });
-  }
-  for (let i = 0; i < 2; i++) {
-    bgObjects.push({
-      type: 'satellite', x: Math.random() * 500, baseY: -50 - Math.random() * 200,
-      size: 1, speed: 8 + Math.random() * 12,
-      phase: Math.random() * Math.PI * 2, zone: 5
-    });
-  }
-  // Zone 6: thermosphere — more stars, satellites
-  for (let i = 0; i < 25; i++) {
-    bgObjects.push({
-      type: 'star', x: Math.random() * 480, baseY: Math.random() * H * 2 - H,
-      size: 1.5 + Math.random() * 2.5, speed: 0, phase: Math.random() * Math.PI * 2, zone: 6
-    });
-  }
-  for (let i = 0; i < 2; i++) {
-    bgObjects.push({
-      type: 'satellite', x: Math.random() * 500, baseY: -30 - Math.random() * 150,
-      size: 1, speed: 5 + Math.random() * 10,
-      phase: Math.random() * Math.PI * 2, zone: 6
-    });
-  }
-  // Zone 7: space — dense stars, satellites
-  for (let i = 0; i < 40; i++) {
-    bgObjects.push({
-      type: 'star', x: Math.random() * 480, baseY: Math.random() * H * 2 - H,
-      size: 2 + Math.random() * 3, speed: 0, phase: Math.random() * Math.PI * 2, zone: 7
-    });
-  }
-  for (let i = 0; i < 2; i++) {
-    bgObjects.push({
-      type: 'satellite', x: Math.random() * 500, baseY: -20 - Math.random() * 100,
-      size: 1, speed: 4 + Math.random() * 8,
-      phase: Math.random() * Math.PI * 2, zone: 7
-    });
+  for (const zd of BG_ZONE_DEFS) {
+    for (const sp of zd.spawns) {
+      for (let i = 0; i < sp.count; i++) {
+        const floorOff = sp.floorMin + Math.random() * (sp.floorMax - sp.floorMin);
+        // worldY: blocks go UP (negative Y), so floor N is at tower[0].y - N*BS
+        // We place objects at that height, offset by a random spread within a few BS
+        const spread = BS * (1 + Math.random() * 3);
+        const size = sp.sizeRange[0] + Math.random() * (sp.sizeRange[1] - sp.sizeRange[0]);
+        const speed = sp.speedRange[0] + Math.random() * (sp.speedRange[1] - sp.speedRange[0]);
+        bgObjects.push({
+          type: sp.type,
+          x: Math.random() * 500,
+          floorOffset: floorOff, // which floor this object lives at
+          yOffset: (Math.random() - 0.3) * spread, // random vertical spread around the floor
+          size,
+          speed,
+          phase: Math.random() * Math.PI * 2,
+          zone: zd.zone,
+          dir: Math.random() > 0.5 ? 1 : -1, // random horizontal direction
+        });
+      }
+    }
   }
 }
 initBgObjects();
@@ -1446,9 +1430,21 @@ function drawBackgroundClassic() {
 
   const t = Date.now() / 1000;
 
-  // Draw bg objects for current and adjacent zones
+  // Draw bg objects — world-space positioned, visible when camera scrolls past them
+  // Convert each object's floorOffset to a world Y, then to screen Y
+  const baseY = tower.length > 0 ? tower[0].y : 0;
   for (const obj of bgObjects) {
+    // Check if this object's zone is relevant
     if (obj.zone > zi + 1 || obj.zone < zi - 1) continue;
+
+    // Compute world Y: objects live at floorOffset floors above ground
+    // Each floor = BS pixels upward (negative Y direction)
+    const objWorldY = baseY - obj.floorOffset * BS + obj.yOffset;
+    const objScreenY = objWorldY - camera.y + shake.y;
+
+    // Skip objects off-screen (with margin)
+    const margin = 120;
+    if (objScreenY < -margin || objScreenY > H + margin) continue;
 
     let alpha = 1;
     if (obj.zone !== zi) alpha = 0.3; // fade adjacent zone objects
@@ -1456,23 +1452,27 @@ function drawBackgroundClassic() {
     ctx.globalAlpha = alpha;
 
     switch (obj.type) {
-      case 'tree': drawTree(obj, t); break;
-      case 'cloud': drawCloudObj(obj, t); break;
-      case 'bird': drawBird(obj, t); break;
-      case 'helicopter': drawHelicopter(obj, t); break;
-      case 'plane': drawPlane(obj, t); break;
-      case 'star': drawStar(obj, t); break;
-      case 'satellite': drawSatellite(obj, t); break;
+      case 'tree': drawTree(obj, t, objScreenY); break;
+      case 'cloud': drawCloudObj(obj, t, objScreenY); break;
+      case 'bird': drawBird(obj, t, objScreenY); break;
+      case 'helicopter': drawHelicopter(obj, t, objScreenY); break;
+      case 'plane': drawPlane(obj, t, objScreenY); break;
+      case 'star': drawStar(obj, t, objScreenY); break;
+      case 'satellite': drawSatellite(obj, t, objScreenY); break;
+      case 'kite': drawKite(obj, t, objScreenY); break;
+      case 'balloon': drawBalloon(obj, t, objScreenY); break;
+      case 'shootingStar': drawShootingStar(obj, t, objScreenY); break;
+      case 'aurora': drawAurora(obj, t, objScreenY); break;
+      case 'ufo': drawUFO(obj, t, objScreenY); break;
     }
 
     ctx.globalAlpha = 1;
   }
 }
 
-function drawTree(obj, t) {
-  // Trees at bottom of screen
-  const x = ((obj.x + t * obj.speed) % (W + 60)) - 30;
-  const y = H - 30;
+function drawTree(obj, t, screenY) {
+  const x = ((obj.x + t * obj.speed * obj.dir) % (W + 60)) - 30;
+  const y = screenY;
   const s = obj.size;
   // Trunk
   ctx.fillStyle = '#8B6914';
@@ -1491,9 +1491,9 @@ function drawTree(obj, t) {
   ctx.fill();
 }
 
-function drawCloudObj(obj, t) {
-  const x = ((obj.x + t * obj.speed) % (W + 120)) - 60;
-  const y = H * 0.15 + obj.baseY * 0.5 + Math.sin(t * 0.3 + obj.phase) * 10;
+function drawCloudObj(obj, t, screenY) {
+  const x = ((obj.x + t * obj.speed * obj.dir) % (W + 120)) - 60;
+  const y = screenY + Math.sin(t * 0.3 + obj.phase) * 10;
   const s = obj.size;
   ctx.fillStyle = 'rgba(255,255,255,0.5)';
   ctx.beginPath();
@@ -1503,9 +1503,9 @@ function drawCloudObj(obj, t) {
   ctx.fill();
 }
 
-function drawBird(obj, t) {
-  const x = ((obj.x + t * obj.speed) % (W + 40)) - 20;
-  const y = H * 0.2 + obj.baseY * 0.3 + Math.sin(t * 2 + obj.phase) * 8;
+function drawBird(obj, t, screenY) {
+  const x = ((obj.x + t * obj.speed * obj.dir) % (W + 40)) - 20;
+  const y = screenY + Math.sin(t * 2 + obj.phase) * 8;
   ctx.strokeStyle = '#333';
   ctx.lineWidth = 2;
   const wing = Math.sin(t * 8 + obj.phase) * 6;
@@ -1516,9 +1516,9 @@ function drawBird(obj, t) {
   ctx.stroke();
 }
 
-function drawHelicopter(obj, t) {
-  const x = ((obj.x + t * obj.speed) % (W + 80)) - 40;
-  const y = H * 0.15 + obj.baseY * 0.3 + Math.sin(t * 0.5 + obj.phase) * 15;
+function drawHelicopter(obj, t, screenY) {
+  const x = ((obj.x + t * obj.speed * obj.dir) % (W + 80)) - 40;
+  const y = screenY + Math.sin(t * 0.5 + obj.phase) * 15;
   // Body
   ctx.fillStyle = '#666';
   ctx.beginPath();
@@ -1537,10 +1537,10 @@ function drawHelicopter(obj, t) {
   ctx.fillRect(x + 14, y - 3, 12, 3);
 }
 
-function drawPlane(obj, t) {
-  const dir = obj.speed > 0 ? 1 : -1;
+function drawPlane(obj, t, screenY) {
+  const dir = obj.dir;
   const x = ((obj.x + t * obj.speed * dir) % (W + 120)) - 60;
-  const y = H * 0.12 + obj.baseY * 0.2 + Math.sin(t * 0.3 + obj.phase) * 10;
+  const y = screenY + Math.sin(t * 0.3 + obj.phase) * 10;
   // Body
   ctx.fillStyle = '#E0E0E0';
   ctx.beginPath();
@@ -1571,9 +1571,9 @@ function drawPlane(obj, t) {
   ctx.stroke();
 }
 
-function drawStar(obj, t) {
+function drawStar(obj, t, screenY) {
   const x = obj.x;
-  const y = (obj.baseY + H) % H;
+  const y = screenY;
   const twinkle = 0.5 + 0.5 * Math.sin(t * 3 + obj.phase);
   ctx.globalAlpha = twinkle;
   ctx.fillStyle = '#FFF';
@@ -1583,9 +1583,9 @@ function drawStar(obj, t) {
   ctx.globalAlpha = 1;
 }
 
-function drawSatellite(obj, t) {
-  const x = ((obj.x + t * obj.speed) % (W + 60)) - 30;
-  const y = H * 0.1 + obj.baseY * 0.15 + Math.sin(t * 0.2 + obj.phase) * 20;
+function drawSatellite(obj, t, screenY) {
+  const x = ((obj.x + t * obj.speed * obj.dir) % (W + 60)) - 30;
+  const y = screenY + Math.sin(t * 0.2 + obj.phase) * 20;
   // Body
   ctx.fillStyle = '#B0B0B0';
   ctx.fillRect(x - 4, y - 3, 8, 6);
@@ -1604,6 +1604,170 @@ function drawSatellite(obj, t) {
   ctx.beginPath();
   ctx.arc(x, y - 8, 1.5, 0, Math.PI * 2);
   ctx.fill();
+}
+
+function drawKite(obj, t, screenY) {
+  const x = ((obj.x + t * obj.speed * obj.dir) % (W + 60)) - 30;
+  const y = screenY + Math.sin(t * 1.5 + obj.phase) * 20;
+  const s = 12 * obj.size;
+  // Kite body (diamond)
+  const colors = ['#FF4444','#FFD700','#4D96FF','#6BCB77'];
+  ctx.fillStyle = colors[Math.floor(obj.phase * 2) % colors.length];
+  ctx.beginPath();
+  ctx.moveTo(x, y - s);
+  ctx.lineTo(x + s * 0.6, y);
+  ctx.lineTo(x, y + s * 0.4);
+  ctx.lineTo(x - s * 0.6, y);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  // Cross sticks
+  ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+  ctx.beginPath();
+  ctx.moveTo(x, y - s); ctx.lineTo(x, y + s * 0.4); ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x - s * 0.6, y); ctx.lineTo(x + s * 0.6, y); ctx.stroke();
+  // Tail
+  ctx.strokeStyle = ctx.fillStyle;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(x, y + s * 0.4);
+  ctx.quadraticCurveTo(x + 8 + Math.sin(t * 3 + obj.phase) * 6, y + s * 0.4 + 15, x + 4, y + s * 0.4 + 30);
+  ctx.stroke();
+  // String to ground
+  ctx.strokeStyle = 'rgba(150,150,150,0.4)';
+  ctx.lineWidth = 0.5;
+  ctx.beginPath();
+  ctx.moveTo(x, y - s);
+  ctx.lineTo(x + (Math.sin(t * 0.5) * 10), y - s - 80);
+  ctx.stroke();
+}
+
+function drawBalloon(obj, t, screenY) {
+  const x = ((obj.x + t * obj.speed * obj.dir) % (W + 50)) - 25;
+  const y = screenY + Math.sin(t * 0.8 + obj.phase) * 12;
+  const s = 14 * obj.size;
+  const colors = ['#FF6B6B','#4D96FF','#FFD93D','#C084FC','#6BCB77'];
+  const color = colors[Math.floor(obj.phase * 3) % colors.length];
+  // Balloon body (ellipse)
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.ellipse(x, y, s * 0.7, s, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // Highlight
+  ctx.fillStyle = 'rgba(255,255,255,0.35)';
+  ctx.beginPath();
+  ctx.ellipse(x - s * 0.2, y - s * 0.3, s * 0.2, s * 0.35, -0.3, 0, Math.PI * 2);
+  ctx.fill();
+  // Knot
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(x - 3, y + s);
+  ctx.lineTo(x + 3, y + s);
+  ctx.lineTo(x, y + s + 5);
+  ctx.fill();
+  // String
+  ctx.strokeStyle = 'rgba(150,150,150,0.5)';
+  ctx.lineWidth = 0.8;
+  ctx.beginPath();
+  ctx.moveTo(x, y + s + 5);
+  ctx.quadraticCurveTo(x + Math.sin(t * 1.2 + obj.phase) * 8, y + s + 25, x + Math.sin(t + obj.phase) * 5, y + s + 50);
+  ctx.stroke();
+}
+
+function drawShootingStar(obj, t, screenY) {
+  // Shooting stars streak across the screen periodically
+  const period = 8; // seconds between appearances
+  const activeTime = 0.6; // how long the streak lasts
+  const cycleT = (t + obj.phase * period) % period;
+  if (cycleT > activeTime) return; // invisible most of the time
+  const progress = cycleT / activeTime;
+  const startX = obj.dir > 0 ? -40 : W + 40;
+  const endX = obj.dir > 0 ? W + 40 : -40;
+  const x = lerp(startX, endX, progress);
+  const y = screenY + progress * 80;
+  // Trail
+  const trailLen = 40;
+  ctx.globalAlpha = (1 - progress) * 0.9;
+  const grad = ctx.createLinearGradient(x, y, x - (obj.dir > 0 ? trailLen : -trailLen), y - 20);
+  grad.addColorStop(0, '#FFFFFF');
+  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.strokeStyle = grad;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.lineTo(x - (obj.dir > 0 ? trailLen : -trailLen), y - 20);
+  ctx.stroke();
+  // Head
+  ctx.fillStyle = '#FFFFFF';
+  ctx.beginPath();
+  ctx.arc(x, y, 2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = 1;
+}
+
+function drawAurora(obj, t, screenY) {
+  // Northern lights — flowing colored curtains
+  const alpha = 0.15 + 0.1 * Math.sin(t * 0.3 + obj.phase);
+  ctx.globalAlpha = alpha;
+  const colors = [
+    'rgba(0,255,128,0.6)',
+    'rgba(0,200,255,0.4)',
+    'rgba(128,0,255,0.3)',
+    'rgba(0,255,200,0.5)',
+  ];
+  for (let i = 0; i < 4; i++) {
+    ctx.fillStyle = colors[i];
+    ctx.beginPath();
+    ctx.moveTo(0, screenY + i * 30);
+    for (let x = 0; x <= W; x += 20) {
+      const waveY = Math.sin(x * 0.01 + t * (0.5 + i * 0.2) + obj.phase + i) * 25 + i * 15;
+      ctx.lineTo(x, screenY + waveY + i * 30);
+    }
+    ctx.lineTo(W, screenY + 120 + i * 30);
+    ctx.lineTo(0, screenY + 120 + i * 30);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawUFO(obj, t, screenY) {
+  const x = ((obj.x + t * obj.speed * obj.dir) % (W + 80)) - 40;
+  const y = screenY + Math.sin(t * 0.6 + obj.phase) * 25;
+  // Beam (flashing)
+  if (Math.sin(t * 2 + obj.phase) > 0) {
+    ctx.fillStyle = 'rgba(0,255,100,0.08)';
+    ctx.beginPath();
+    ctx.moveTo(x - 6, y + 8);
+    ctx.lineTo(x + 6, y + 8);
+    ctx.lineTo(x + 18, y + 60);
+    ctx.lineTo(x - 18, y + 60);
+    ctx.fill();
+  }
+  // Dome
+  ctx.fillStyle = '#AACCAA';
+  ctx.beginPath();
+  ctx.ellipse(x, y - 2, 8, 6, 0, Math.PI, 0);
+  ctx.fill();
+  // Body (saucer)
+  ctx.fillStyle = '#889988';
+  ctx.beginPath();
+  ctx.ellipse(x, y + 2, 18, 5, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // Lights
+  const lightPhase = Math.sin(t * 5 + obj.phase);
+  const colors = ['#FF0000','#FFFF00','#00FF00','#00FFFF','#FF00FF'];
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI * 2 + t * 2;
+    const lx = x + Math.cos(a) * 13;
+    const ly = y + 3 + Math.sin(a) * 2;
+    ctx.fillStyle = i === Math.floor((t * 3 + obj.phase) % 5) ? colors[i] : 'rgba(100,100,100,0.5)';
+    ctx.beginPath();
+    ctx.arc(lx, ly, 1.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
 }
 
 // ============================================================
