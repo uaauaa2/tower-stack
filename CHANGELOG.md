@@ -6,6 +6,27 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [Unreleased] — feature/T27-themes
+
+### Added
+
+**Visual Theme System (Spec 002-themes, T27)**
+
+- 4 selectable visual themes, switchable in Settings screen with instant effect (no restart needed):
+  - **✨ Classic** — Enhanced default: gradient-filled blocks with highlight/shadow depth, polished blue/coral buttons
+  - **⚡ Cyberpunk** — Dark purple grid background, neon cyan/magenta block outlines with `shadowBlur` glow, scanline overlay, neon HUD/buttons
+  - **▓ ASCII** — Black background with Matrix-style character rain, flat green monospace blocks with double-border outline, terminal-green HUD
+  - **🎮 Pixel** — NES-palette flat sky + chunky pixel clouds, dithered 8×8 pixel grid inside blocks, 1px hard black border, pixel-style buttons
+- Theme selector UI added to Settings screen (2×2 button grid, active theme highlighted)
+- Theme persisted in localStorage (graceful fallback to Classic on corrupt/missing data)
+- All draw surfaces themed: blocks, crane, cable, background, ground, HUD, menu, game-over card, city view, buttons, float texts
+- Matrix rain animation state (`matrixColumns[]`) initialised once for consistent ASCII atmosphere
+- `Storage.saveTheme(id)` — writes theme into existing save object without affecting game data
+- `THEMES` constant with per-theme: block colors, crane/cable/hook colors, HUD colors, font family, button styles, background style key
+- `theme()` helper — returns active `THEMES` entry; falls back to `classic` for unknown IDs
+
+---
+
 ## [1.0.0] — 2026-05-09
 
 ### Added

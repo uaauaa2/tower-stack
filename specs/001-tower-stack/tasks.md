@@ -57,6 +57,24 @@
 
 ---
 
+## Phase 2.5: Visual Themes (branch: feature/T27-themes)
+
+- [x] T27: 4 visual themes — Classic (enhanced), Cyberpunk, ASCII, Pixel Art
+  - [x] T27a: THEMES config + `activeTheme` var + `theme()` helper
+  - [x] T27b: `blockColor()` uses theme palette
+  - [x] T27c: `Storage.saveTheme()` — persist theme to localStorage
+  - [x] T27d: `drawBlockTheme()` dispatcher + 4 block style functions
+  - [x] T27e: `drawBackgroundCyberpunk()`, `drawBackgroundAscii()` (Matrix rain), `drawBackgroundPixel()`
+  - [x] T27f: Theme-aware `drawGround()`, `drawTower()`, `drawFallingBlock()`, `drawDebris()`
+  - [x] T27g: Theme-aware `drawCrane()` with cyberpunk neon glow
+  - [x] T27h: Theme-aware `drawHUD()`, `drawFloatTexts()`
+  - [x] T27i: Theme-aware `drawMenu()`, `drawGameOver()`, `drawCityView()`
+  - [x] T27j: `drawButton()` — 4 visual styles (classic/cyberpunk/ascii/pixel)
+  - [x] T27k: Theme selector 2×2 button grid prepended to Settings screen
+  - [x] T27l: Theme loaded from localStorage on startup
+
+---
+
 ## Phase 3: Polish & Backend (Post-MVP)
 
 - [ ] T22: Procedural sound effects (Web Audio API) *(dep: T1-T16)*
@@ -72,9 +90,11 @@
 | Phase | Total | Done | % |
 |-------|-------|------|---|
 | Phase 1 | 16 | 16 | 100% |
+| Phase 1.5 | 6 | 6 | 100% |
 | Phase 2 | 5 | 0 | 0% |
+| Phase 2.5 (T27) | 12 | 12 | 100% |
 | Phase 3 | 5 | 0 | 0% |
-| **Total** | **26** | **16** | **62%** |
+| **Total** | **44** | **34** | **77%** |
 
 ---
 
