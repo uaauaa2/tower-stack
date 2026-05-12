@@ -277,10 +277,11 @@ const STATES = { MENU: 0, PLAYING: 1, DROPPING: 2, GAME_OVER: 3, CITY_VIEW: 4, S
 // TELEGRAM WEBAPP SDK
 // ============================================================
 const TelegramWebApp = window.Telegram?.WebApp || null;
+console.log('[TG] SDK loaded:', !!window.Telegram, 'WebApp:', !!TelegramWebApp, 'initData:', !!TelegramWebApp?.initData, 'user:', TelegramWebApp?.initDataUnsafe?.user);
 if (TelegramWebApp) {
   TelegramWebApp.ready();
   TelegramWebApp.expand();
-  console.log('[TG] WebApp initialized');
+  console.log('[TG] WebApp ready, theme:', TelegramWebApp.colorScheme);
 }
 
 // ============================================================
@@ -325,30 +326,33 @@ const API = {
   },
 
   async submitScore(gameData) {
-    if (this._submitting) return null;
-    if (!this.isTelegram()) return null;
-    this._submitting = true;
+    if (!this.isTelegram()) {
+      console.log('[API] Not Telegram, skipping submit');
+      return null;
+    }
     try {
+      const payload = {
+        init_data: this.getInitData(),
+        score: gameData.score,
+        height: gameData.height,
+        best_combo: gameData.bestCombo,
+        perfect_count: gameData.perfectCount || 0,
+        duration_ms: gameData.durationMs || 0,
+        theme: activeTheme,
+      };
+      console.log('[API] Submitting score to', this.baseUrl, payload);
       const res = await fetch(`${this.baseUrl}/api/score`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          init_data: this.getInitData(),
-          score: gameData.score,
-          height: gameData.height,
-          best_combo: gameData.bestCombo,
-          perfect_count: gameData.perfectCount,
-          duration_ms: gameData.durationMs,
-          theme: activeTheme,
-        }),
+        body: JSON.stringify(payload),
       });
+      const text = await res.text();
+      console.log('[API] Response:', res.status, text);
       if (!res.ok) return null;
-      return await res.json();
+      return JSON.parse(text);
     } catch(e) {
-      console.log('[API] submitScore failed:', e.message);
+      console.log('[API] submitScore error:', e.message);
       return null;
-    } finally {
-      this._submitting = false;
     }
   },
 
@@ -749,16 +753,26 @@ function gameOver() {
   if (height > 0) {
     Storage.addTower(height, score);
 
-    // Submit score to backend if in Telegram
-    if (API.isTelegram()) {
+    // Submit score to backend
+    const tgData = API.getInitData();
+    const tgUser = API.getUser();
+    console.log('[GAME] gameOver:', {score, height, bestCombo, isTelegram: API.isTelegram(), hasInitData: !!tgData, user: tgUser});
+
+    if (tgData) {
       API.submitScore({
         score, height, bestCombo, perfectCount: combo, durationMs: 0,
       }).then(result => {
         if (result) {
           window._lastApiResult = result;
-          console.log(`[API] Score submitted: rank #${result.rank}, personal_best=${result.personal_best}`);
+          console.log('[API] Score submitted:', result);
+        } else {
+          console.log('[API] submitScore returned null');
         }
+      }).catch(err => {
+        console.log('[API] submitScore error:', err);
       });
+    } else {
+      console.log('[API] No initData — playing locally');
     }
   }
 }
@@ -2385,13 +2399,15 @@ function drawGameOver() {
     ctx.fillStyle = th.hudComboColor;
     ctx.font = `bold ${su * 0.65}px ${th.fontFamily}`;
     ctx.fillText(`High Score: ${data.highScore}`, W/2, cardY + su * 7.8);
-    // Show "New Personal Best" from API
-    if (window._lastApiResult?.personal_best) {
-      ctx.fillStyle = '#FFD700';
-      ctx.font = `bold ${su * 0.75}px ${th.fontFamily}`;
-      ctx.fillText('⭐ NEW PERSONAL BEST! ⭐', W/2, cardY + su * 8.8);
-    }
   }
+
+  // Show API status
+  const apiResult = window._lastApiResult;
+  const tgStatus = API.isTelegram() ? '✅ TG' : '❌ no TG';
+  const submitStatus = apiResult ? `✅ Rank #${apiResult.rank}` : (API.isTelegram() ? '⏳ sending...' : '');
+  ctx.fillStyle = 'rgba(255,255,255,0.35)';
+  ctx.font = `${su * 0.4}px ${th.fontFamily}`;
+  ctx.fillText(`${tgStatus} ${submitStatus}`, W/2, cardY + su * 8.8);
 
   const btnW = cardW * 0.72, btnH = su * 1.8;
   drawButton(W/2, cardY + su * 9.5, btnW, btnH, '▶  RETRY', 'primary');
