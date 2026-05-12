@@ -31,14 +31,14 @@
 
 ## Phase 3: Frontend Integration
 
-- [ ] T-B18: Add `API` module to `index.html` (baseUrl, fetch wrappers, initData extraction)
-- [ ] T-B19: Detect Telegram environment, conditionally load SDK
-- [ ] T-B20: Call `Telegram.WebApp.ready()`, `expand()` on init in TG
-- [ ] T-B21: Score submission on game over (if in Telegram)
-- [ ] T-B22: Leaderboard screen (`STATES.LEADERBOARD`) — fetch + render with tabs
-- [ ] T-B23: Personal stats display (settings or dedicated screen)
-- [ ] T-B24: Haptic feedback — impact on drop, perfect, game over
-- [ ] T-B25: Offline fallback — silent localStorage when API unreachable
+- [x] T-B18: Add `API` module to `index.html` (baseUrl, fetch wrappers, initData extraction)
+- [x] T-B19: Detect Telegram environment, conditionally load SDK
+- [x] T-B20: Call `Telegram.WebApp.ready()`, `expand()` on init in TG
+- [x] T-B21: Score submission on game over (if in Telegram)
+- [x] T-B22: Leaderboard screen (`STATES.LEADERBOARD`) — fetch + render with tabs
+- [x] T-B23: Personal stats display (settings or dedicated screen)
+- [x] T-B24: Haptic feedback — impact on drop, perfect, game over
+- [x] T-B25: Offline fallback — silent localStorage when API unreachable
 
 ## Phase 4: Achievements & Polish
 
@@ -57,6 +57,6 @@
 |-------|-------|------|---|
 | Phase 1: Backend Core | 10 | 9 | 90% |
 | Phase 2: Telegram Bot | 7 | 5 | 71% |
-| Phase 3: Frontend | 8 | 0 | 0% |
+| Phase 3: Frontend | 8 | 8 | 100% |
 | Phase 4: Achievements | 6 | 0 | 0% |
-| **Total** | **31** | **14** | **45%** |
+| **Total** | **31** | **22** | **71%** |
