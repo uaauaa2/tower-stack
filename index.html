@@ -31,6 +31,7 @@
 </head>
 <body>
 <canvas id="game"></canvas>
+<script src="https://telegram.org/js/telegram-web-app.js" async></script>
 <script>
 // ============================================================
 // CONFIG
@@ -270,7 +271,115 @@ resize();
 // ============================================================
 // GAME STATE
 // ============================================================
-const STATES = { MENU: 0, PLAYING: 1, DROPPING: 2, GAME_OVER: 3, CITY_VIEW: 4, SETTINGS: 5 };
+const STATES = { MENU: 0, PLAYING: 1, DROPPING: 2, GAME_OVER: 3, CITY_VIEW: 4, SETTINGS: 5, LEADERBOARD: 6, STATS: 7 };
+
+// ============================================================
+// TELEGRAM WEBAPP SDK
+// ============================================================
+const TelegramWebApp = window.Telegram?.WebApp || null;
+if (TelegramWebApp) {
+  TelegramWebApp.ready();
+  TelegramWebApp.expand();
+  console.log('[TG] WebApp initialized');
+}
+
+// ============================================================
+// API MODULE
+// ============================================================
+const API = {
+  baseUrl: '', // set below
+  _submitting: false,
+
+  init() {
+    // In production, point to your backend
+    // Local dev: empty = same origin or localhost
+    this.baseUrl = 'https://tower-stack-api.onrender.com';
+  },
+
+  isTelegram() {
+    return !!TelegramWebApp;
+  },
+
+  getInitData() {
+    return TelegramWebApp?.initData || '';
+  },
+
+  getUser() {
+    return TelegramWebApp?.initDataUnsafe?.user || null;
+  },
+
+  haptic(style) {
+    try {
+      if (TelegramWebApp?.HapticFeedback) {
+        TelegramWebApp.HapticFeedback.impactOccurred(style || 'medium');
+      }
+    } catch(e) {}
+  },
+
+  hapticNotification(type) {
+    try {
+      if (TelegramWebApp?.HapticFeedback) {
+        TelegramWebApp.HapticFeedback.notificationOccurred(type || 'success');
+      }
+    } catch(e) {}
+  },
+
+  async submitScore(gameData) {
+    if (this._submitting) return null;
+    if (!this.isTelegram()) return null;
+    this._submitting = true;
+    try {
+      const res = await fetch(`${this.baseUrl}/api/score`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          init_data: this.getInitData(),
+          score: gameData.score,
+          height: gameData.height,
+          best_combo: gameData.bestCombo,
+          perfect_count: gameData.perfectCount,
+          duration_ms: gameData.durationMs,
+          theme: activeTheme,
+        }),
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch(e) {
+      console.log('[API] submitScore failed:', e.message);
+      return null;
+    } finally {
+      this._submitting = false;
+    }
+  },
+
+  async getLeaderboard(period = 'all', limit = 10) {
+    try {
+      const res = await fetch(`${this.baseUrl}/api/leaderboard?period=${period}&limit=${limit}`);
+      if (!res.ok) return null;
+      return await res.json();
+    } catch(e) {
+      console.log('[API] getLeaderboard failed:', e.message);
+      return null;
+    }
+  },
+
+  async getStats() {
+    if (!this.isTelegram()) return null;
+    try {
+      const res = await fetch(`${this.baseUrl}/api/stats`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ init_data: this.getInitData() }),
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch(e) {
+      console.log('[API] getStats failed:', e.message);
+      return null;
+    }
+  },
+};
+API.init();
 let state = STATES.MENU;
 let score = 0, combo = 0, bestCombo = 0;
 let lives = CFG.maxLives;
@@ -287,6 +396,9 @@ let inputLocked = false;
 let lastTime = 0;
 let menuAnim = 0;
 let gameOverTimer = 0;
+let leaderboardData = null;
+let leaderboardTab = 'all';
+let statsData = null;
 let hintOpacity = 1;
 let cityScrollX = 0;
 let cityTouchLastX = 0;
@@ -411,6 +523,7 @@ function getSwingState() {
 
 function dropBlock() {
   if (state !== STATES.PLAYING) return;
+  API.haptic('medium');
   const { angle, vx, cl } = getSwingState();
 
   // Hook position (attachment point)
@@ -511,6 +624,7 @@ function landBlock() {
 
   // Scoring
   if (isPerfect) {
+    API.haptic('heavy');
     combo++;
     if (combo > bestCombo) bestCombo = combo;
     const multiplier = combo; // after increment, combo IS the multiplier
@@ -566,6 +680,7 @@ function landBlock() {
 }
 
 function missBlock(fb, overlapPx) {
+  API.haptic('light');
   if (fb) {
     const curRot = fb.rotation || 0;
     const curVx = fb.vx || 0;
@@ -628,10 +743,23 @@ function gameOver() {
   fallingBlock = null;
   gameOverTimer = 0;
   triggerShake(8, 0.4);
+  API.hapticNotification('error');
 
   const height = floorCount();
   if (height > 0) {
     Storage.addTower(height, score);
+
+    // Submit score to backend if in Telegram
+    if (API.isTelegram()) {
+      API.submitScore({
+        score, height, bestCombo, perfectCount: combo, durationMs: 0,
+      }).then(result => {
+        if (result) {
+          window._lastApiResult = result;
+          console.log(`[API] Score submitted: rank #${result.rank}, personal_best=${result.personal_best}`);
+        }
+      });
+    }
   }
 }
 
@@ -2181,14 +2309,17 @@ function drawMenu() {
 
   buttons = [];
   const btnW = W * 0.6, btnH = su * 2.1;
-  drawButton(W/2, H * 0.56, btnW, btnH, '▶  PLAY', 'primary');
-  addButton('PLAY', W/2, H * 0.56, btnW, btnH, () => startGame(), 'primary');
+  drawButton(W/2, H * 0.48, btnW, btnH, '▶  PLAY', 'primary');
+  addButton('PLAY', W/2, H * 0.48, btnW, btnH, () => startGame(), 'primary');
+
+  drawButton(W/2, H * 0.57, btnW, btnH, '🏆  LEADERBOARD', 'secondary');
+  addButton('LEADERBOARD', W/2, H * 0.57, btnW, btnH, () => { state = STATES.LEADERBOARD; leaderboardData = null; }, 'secondary');
 
   drawButton(W/2, H * 0.66, btnW, btnH, '🏙  MY CITY', 'secondary');
   addButton('CITY', W/2, H * 0.66, btnW, btnH, () => { state = STATES.CITY_VIEW; cityScrollX = 0; }, 'secondary');
 
-  drawButton(W/2, H * 0.76, btnW, btnH, '⚙  SETTINGS', 'secondary');
-  addButton('SETTINGS', W/2, H * 0.76, btnW, btnH, () => { state = STATES.SETTINGS; initSettingsForm(); }, 'secondary');
+  drawButton(W/2, H * 0.75, btnW, btnH, '⚙  SETTINGS', 'secondary');
+  addButton('SETTINGS', W/2, H * 0.75, btnW, btnH, () => { state = STATES.SETTINGS; initSettingsForm(); }, 'secondary');
 
   ctx.textAlign = 'left';
 }
@@ -2199,7 +2330,7 @@ function drawGameOver() {
   ctx.fillStyle = 'rgba(0,0,0,0.55)';
   ctx.fillRect(0, 0, W, H);
 
-  const cardW = W * 0.78, cardH = su * 14;
+  const cardW = W * 0.78, cardH = su * 17;
   const cardX = W/2 - cardW/2, cardY = H/2 - cardH/2;
   const slideUp = Math.min(1, gameOverTimer * 3);
 
@@ -2254,16 +2385,24 @@ function drawGameOver() {
     ctx.fillStyle = th.hudComboColor;
     ctx.font = `bold ${su * 0.65}px ${th.fontFamily}`;
     ctx.fillText(`High Score: ${data.highScore}`, W/2, cardY + su * 7.8);
+    // Show "New Personal Best" from API
+    if (window._lastApiResult?.personal_best) {
+      ctx.fillStyle = '#FFD700';
+      ctx.font = `bold ${su * 0.75}px ${th.fontFamily}`;
+      ctx.fillText('⭐ NEW PERSONAL BEST! ⭐', W/2, cardY + su * 8.8);
+    }
   }
 
   const btnW = cardW * 0.72, btnH = su * 1.8;
   drawButton(W/2, cardY + su * 9.5, btnW, btnH, '▶  RETRY', 'primary');
-  drawButton(W/2, cardY + su * 11.8, btnW, btnH, '🏙  MY CITY', 'secondary');
+  drawButton(W/2, cardY + su * 11.8, btnW, btnH, '🏆  LEADERBOARD', 'secondary');
+  drawButton(W/2, cardY + su * 14.1, btnW, btnH, '🏙  MY CITY', 'secondary');
 
   ctx.restore();
   buttons = [];
   addButton('RETRY', W/2, cardY + su * 9.5, btnW, btnH, () => startGame(), 'primary');
-  addButton('CITY', W/2, cardY + su * 11.8, btnW, btnH, () => { state = STATES.CITY_VIEW; cityScrollX = 0; }, 'secondary');
+  addButton('LEADERBOARD', W/2, cardY + su * 11.8, btnW, btnH, () => { state = STATES.LEADERBOARD; leaderboardData = null; }, 'secondary');
+  addButton('CITY', W/2, cardY + su * 14.1, btnW, btnH, () => { state = STATES.CITY_VIEW; cityScrollX = 0; }, 'secondary');
   ctx.textAlign = 'left';
 }
 
@@ -2368,6 +2507,271 @@ function drawCityView() {
   addButton('BACK',W/2-btnW2*0.55,H-su*2.2,btnW2,btnH2,()=>{state=STATES.MENU;},'secondary');
   addButton('PLAY',W/2+btnW2*0.55,H-su*2.2,btnW2,btnH2,()=>startGame(),'primary');
   ctx.textAlign='left';
+}
+
+// ============================================================
+// DRAW — Leaderboard Screen
+// ============================================================
+let _lbFetchTimer = 0;
+
+function drawLeaderboardScreen() {
+  const th = theme();
+  const su = Math.max(14, W * 0.065);
+  const t = Date.now() / 1000;
+
+  // Background
+  if (th.id === 'cyberpunk') {
+    ctx.fillStyle = '#050010'; ctx.fillRect(0,0,W,H);
+    ctx.strokeStyle='rgba(0,255,255,0.05)'; ctx.lineWidth=1;
+    for(let x=0;x<W;x+=40){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
+  } else if (th.id === 'ascii') {
+    ctx.fillStyle = '#000000'; ctx.fillRect(0,0,W,H);
+  } else if (th.id === 'pixel') {
+    ctx.fillStyle = '#000010'; ctx.fillRect(0,0,W,H);
+  } else {
+    const grad = ctx.createLinearGradient(0,0,0,H);
+    grad.addColorStop(0,'#1a1a2e'); grad.addColorStop(1,'#16213e');
+    ctx.fillStyle=grad; ctx.fillRect(0,0,W,H);
+  }
+
+  // Fetch data if needed
+  if (!leaderboardData && t - _lbFetchTimer > 2) {
+    _lbFetchTimer = t;
+    API.getLeaderboard(leaderboardTab, 10).then(data => {
+      leaderboardData = data;
+    }).catch(() => {
+      leaderboardData = { period: leaderboardTab, entries: [] };
+    });
+  }
+
+  // Title
+  ctx.textAlign = 'center';
+  if (th.id==='cyberpunk'){ctx.shadowColor=th.hudColor;ctx.shadowBlur=14;}
+  ctx.fillStyle = th.menuTextColor;
+  ctx.font = `bold ${su*1.3}px ${th.fontFamily}`;
+  ctx.fillText('🏆 LEADERBOARD', W/2, su*2.5);
+  ctx.shadowBlur=0;
+
+  // Tabs
+  const tabW = W * 0.35, tabH = su * 1.6;
+  const tabY = su * 3.5;
+  // All-time tab
+  const allActive = leaderboardTab === 'all';
+  ctx.fillStyle = allActive
+    ? (th.id==='cyberpunk'?'#00FFFF':th.id==='ascii'?'#00FF41':'#4D96FF')
+    : 'rgba(255,255,255,0.1)';
+  roundRect(W/2 - tabW - 4, tabY, tabW, tabH, 6); ctx.fill();
+  ctx.fillStyle = allActive ? '#FFFFFF' : 'rgba(255,255,255,0.5)';
+  ctx.font = `bold ${su*0.6}px ${th.fontFamily}`;
+  ctx.fillText('ALL TIME', W/2 - tabW/2 - 4, tabY + tabH*0.65);
+  // Weekly tab
+  const weekActive = leaderboardTab === 'weekly';
+  ctx.fillStyle = weekActive
+    ? (th.id==='cyberpunk'?'#00FFFF':th.id==='ascii'?'#00FF41':'#4D96FF')
+    : 'rgba(255,255,255,0.1)';
+  roundRect(W/2 + 4, tabY, tabW, tabH, 6); ctx.fill();
+  ctx.fillStyle = weekActive ? '#FFFFFF' : 'rgba(255,255,255,0.5)';
+  ctx.fillText('THIS WEEK', W/2 + tabW/2 + 4, tabY + tabH*0.65);
+
+  buttons = [];
+  addButton('TAB_ALL', W/2 - tabW - 4, tabY, tabW, tabH, () => {
+    leaderboardTab = 'all'; leaderboardData = null; _lbFetchTimer = 0;
+  }, 'secondary');
+  addButton('TAB_WEEK', W/2 + 4, tabY, tabW, tabH, () => {
+    leaderboardTab = 'weekly'; leaderboardData = null; _lbFetchTimer = 0;
+  }, 'secondary');
+
+  // Entries
+  const entries = leaderboardData?.entries || [];
+  const entryStartY = tabY + tabH + su * 1.2;
+  const entryH = su * 2.2;
+
+  if (entries.length === 0 && leaderboardData) {
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.font = `${su*0.7}px ${th.fontFamily}`;
+    ctx.fillText('No games played yet!', W/2, entryStartY + su * 3);
+    ctx.fillText('Be the first! 🎮', W/2, entryStartY + su * 4.5);
+  } else if (!leaderboardData) {
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.font = `${su*0.7}px ${th.fontFamily}`;
+    ctx.fillText('Loading...', W/2, entryStartY + su * 3);
+  }
+
+  const medals = ['🥇','🥈','🥉'];
+  const currentUser = API.getUser()?.id;
+
+  for (let i = 0; i < entries.length && i < 10; i++) {
+    const e = entries[i];
+    const ey = entryStartY + i * entryH;
+    if (ey + entryH > H - su * 4) break;
+
+    const isMe = false; // Can't easily check without usernames matching
+
+    // Row background
+    ctx.fillStyle = i % 2 === 0 ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.06)';
+    if (i < 3) ctx.fillStyle = ['rgba(255,215,0,0.08)','rgba(192,192,192,0.06)','rgba(205,127,50,0.06)'][i];
+    roundRect(su*0.5, ey, W - su, entryH - 2, 4); ctx.fill();
+
+    // Rank
+    ctx.textAlign = 'left';
+    ctx.fillStyle = i < 3 ? '#FFD700' : 'rgba(255,255,255,0.6)';
+    ctx.font = `bold ${su*0.7}px ${th.fontFamily}`;
+    ctx.fillText(i < 3 ? medals[i] : `${e.rank}.`, su*1.2, ey + entryH*0.6);
+
+    // Username
+    ctx.fillStyle = th.menuTextColor;
+    ctx.font = `bold ${su*0.65}px ${th.fontFamily}`;
+    const maxNameW = W * 0.4;
+    let name = e.username || 'Anonymous';
+    ctx.fillText(name, su*3.5, ey + entryH*0.45);
+
+    // Score
+    ctx.textAlign = 'right';
+    ctx.fillStyle = th.hudComboColor || '#FFD700';
+    ctx.font = `bold ${su*0.7}px ${th.fontFamily}`;
+    ctx.fillText(`${e.score.toLocaleString()}`, W - su*3, ey + entryH*0.45);
+
+    // Height
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.font = `${su*0.5}px ${th.fontFamily}`;
+    ctx.fillText(`${e.height} floors`, W - su*3, ey + entryH*0.8);
+  }
+
+  // Back button
+  const btnW2 = su * 4, btnH2 = su * 1.8;
+  drawButton(W/2, H - su*2, btnW2, btnH2, '← BACK', 'secondary');
+  addButton('BACK', W/2, H - su*2, btnW2, btnH2, () => { state = STATES.MENU; leaderboardData = null; }, 'secondary');
+
+  ctx.textAlign = 'left';
+}
+
+// ============================================================
+// DRAW — Stats Screen
+// ============================================================
+let _statsFetchTimer = 0;
+
+function drawStatsScreen() {
+  const th = theme();
+  const su = Math.max(14, W * 0.065);
+  const t = Date.now() / 1000;
+
+  // Background
+  if (th.id === 'cyberpunk') {
+    ctx.fillStyle = '#050010'; ctx.fillRect(0,0,W,H);
+  } else if (th.id === 'ascii') {
+    ctx.fillStyle = '#000000'; ctx.fillRect(0,0,W,H);
+  } else if (th.id === 'pixel') {
+    ctx.fillStyle = '#000010'; ctx.fillRect(0,0,W,H);
+  } else {
+    const grad = ctx.createLinearGradient(0,0,0,H);
+    grad.addColorStop(0,'#1a1a2e'); grad.addColorStop(1,'#16213e');
+    ctx.fillStyle=grad; ctx.fillRect(0,0,W,H);
+  }
+
+  // Fetch if needed
+  if (!statsData && API.isTelegram() && t - _statsFetchTimer > 3) {
+    _statsFetchTimer = t;
+    API.getStats().then(data => { statsData = data; }).catch(() => {
+      statsData = { _error: true };
+    });
+  }
+
+  // Title
+  ctx.textAlign = 'center';
+  if (th.id==='cyberpunk'){ctx.shadowColor=th.hudColor;ctx.shadowBlur=14;}
+  ctx.fillStyle = th.menuTextColor;
+  ctx.font = `bold ${su*1.3}px ${th.fontFamily}`;
+  ctx.fillText('📊 YOUR STATS', W/2, su*2.5);
+  ctx.shadowBlur=0;
+
+  if (!API.isTelegram()) {
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.font = `${su*0.65}px ${th.fontFamily}`;
+    ctx.fillText('Open in Telegram to see online stats', W/2, su*5);
+    // Show local stats fallback
+    const data = Storage.load();
+    const localStats = [
+      ['High Score', data.highScore],
+      ['Total Towers', data.totalTowers],
+      ['Highest Tower', data.highestTower + ' floors'],
+    ];
+    const startY = su * 7;
+    for (let i = 0; i < localStats.length; i++) {
+      const sy = startY + i * su * 2.5;
+      ctx.fillStyle = 'rgba(255,255,255,0.4)';
+      ctx.font = `${su*0.6}px ${th.fontFamily}`;
+      ctx.fillText(localStats[i][0], W/2, sy);
+      ctx.fillStyle = th.menuTextColor;
+      ctx.font = `bold ${su*1.0}px ${th.fontFamily}`;
+      ctx.fillText(String(localStats[i][1]), W/2, sy + su*1.2);
+    }
+  } else if (!statsData) {
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.font = `${su*0.7}px ${th.fontFamily}`;
+    ctx.fillText('Loading...', W/2, su*5);
+  } else if (statsData._error) {
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.font = `${su*0.65}px ${th.fontFamily}`;
+    ctx.fillText('Could not load stats', W/2, su*5);
+    ctx.fillText('Check your connection', W/2, su*6.5);
+  } else {
+    // Online stats grid
+    const s = statsData;
+    const stats = [
+      ['Rank', `#${s.rank}`],
+      ['Games Played', s.total_games],
+      ['Best Score', s.best_score.toLocaleString()],
+      ['Highest Tower', s.best_height + ' floors'],
+      ['Best Combo', '×' + s.best_combo],
+      ['Avg Score', s.avg_score.toLocaleString()],
+      ['Avg Height', s.avg_height + ' floors'],
+      ['Total Perfects', s.total_perfects],
+      ['Playtime', s.total_playtime_min + ' min'],
+    ];
+
+    const startY = su * 4.5;
+    const colH = su * 2;
+    for (let i = 0; i < stats.length; i++) {
+      const row = i % 2;
+      const col = Math.floor(i / 2);
+      const cx = row === 0 ? W * 0.28 : W * 0.72;
+      const cy = startY + col * colH;
+
+      ctx.textAlign = 'center';
+      ctx.fillStyle = 'rgba(255,255,255,0.35)';
+      ctx.font = `${su*0.45}px ${th.fontFamily}`;
+      ctx.fillText(stats[i][0], cx, cy);
+
+      ctx.fillStyle = th.menuTextColor;
+      ctx.font = `bold ${su*0.75}px ${th.fontFamily}`;
+      ctx.fillText(String(stats[i][1]), cx, cy + su*0.8);
+    }
+
+    // Achievements
+    if (s.achievements && s.achievements.length > 0) {
+      const achY = startY + Math.ceil(stats.length/2) * colH + su;
+      ctx.fillStyle = 'rgba(255,255,255,0.35)';
+      ctx.font = `${su*0.45}px ${th.fontFamily}`;
+      ctx.fillText(`🏅 ${s.achievements.length} Achievements`, W/2, achY);
+
+      const achLabels = {
+        first_game:'🎮', height_10:'🏗️', height_25:'🗼', height_50:'🏙️',
+        combo_3:'🔥', combo_5:'⚡', combo_10:'💎', score_1000:'💰',
+        score_5000:'🎰', score_10000:'👑', games_10:'🎯', games_50:'🏆', perfect_10:'👁️'
+      };
+      ctx.font = `${su*0.8}px sans-serif`;
+      const achStr = s.achievements.map(k => achLabels[k] || '⭐').join(' ');
+      ctx.fillText(achStr, W/2, achY + su);
+    }
+  }
+
+  // Back button
+  buttons = [];
+  const btnW2 = su * 4, btnH2 = su * 1.8;
+  drawButton(W/2, H - su*2, btnW2, btnH2, '← BACK', 'secondary');
+  addButton('BACK', W/2, H - su*2, btnW2, btnH2, () => { state = STATES.MENU; statsData = null; }, 'secondary');
+
+  ctx.textAlign = 'left';
 }
 
 function drawButton(cx, cy, w, h, label, style) {
@@ -2480,6 +2884,14 @@ function tick(timestamp) {
 
     case STATES.CITY_VIEW:
       drawCityView();
+      break;
+
+    case STATES.LEADERBOARD:
+      drawLeaderboardScreen();
+      break;
+
+    case STATES.STATS:
+      drawStatsScreen();
       break;
 
     case STATES.SETTINGS:
