@@ -850,102 +850,335 @@ function update(dt) {
 // ============================================================
 
 // ============================================================
-// DRAW — Block Styles (theme dispatch)
+// DRAW — Block Sprites (pre-rendered offscreen canvas, cached)
 // ============================================================
+const SPRITE_CACHE = {};
+
+function getBlockSprite(themeId, color, isPerfect, size) {
+  const key = `${themeId}_${color}_${isPerfect ? 1 : 0}_${size}`;
+  if (SPRITE_CACHE[key]) return SPRITE_CACHE[key];
+  const oc = document.createElement('canvas');
+  oc.width = size; oc.height = size;
+  const c = oc.getContext('2d');
+  const style = (THEMES[themeId] || THEMES.classic).blockStyle;
+  switch (style) {
+    case 'cyberpunk': buildSpriteCyberpunk(c, color, isPerfect, size); break;
+    case 'ascii':     buildSpriteAscii(c, color, isPerfect, size); break;
+    case 'pixel':     buildSpritePixel(c, color, isPerfect, size); break;
+    default:          buildSpriteClassic(c, color, isPerfect, size); break;
+  }
+  SPRITE_CACHE[key] = oc;
+  return oc;
+}
+
 function drawBlockTheme(bx, by, color, isPerfect) {
-  switch (theme().blockStyle) {
-    case 'cyberpunk': drawBlockCyberpunk(bx, by, color, isPerfect); break;
-    case 'ascii':     drawBlockAscii(bx, by, color, isPerfect); break;
-    case 'pixel':     drawBlockPixel(bx, by, color, isPerfect); break;
-    default:          drawBlockClassic(bx, by, color, isPerfect); break;
+  ctx.drawImage(getBlockSprite(activeTheme, color, isPerfect || false, BS), bx, by, BS, BS);
+}
+
+// ──────────────────────────────────────────────────────────────
+// Sprite: CLASSIC — glossy painted block with bevel & shine
+// ──────────────────────────────────────────────────────────────
+function buildSpriteClassic(c, color, isPerfect, S) {
+  // 5-stop vertical gradient for rich depth
+  const g = c.createLinearGradient(0, 0, 0, S);
+  g.addColorStop(0,    shadeColor(color, 52));
+  g.addColorStop(0.12, shadeColor(color, 26));
+  g.addColorStop(0.5,  color);
+  g.addColorStop(0.88, shadeColor(color, -22));
+  g.addColorStop(1,    shadeColor(color, -45));
+  c.fillStyle = g;
+  c.fillRect(0, 0, S, S);
+
+  // Horizontal light-to-dark gradient overlay (left bright, right dark)
+  const gh = c.createLinearGradient(0, 0, S, 0);
+  gh.addColorStop(0,   'rgba(255,255,255,0.20)');
+  gh.addColorStop(0.4, 'rgba(255,255,255,0)');
+  gh.addColorStop(0.8, 'rgba(0,0,0,0)');
+  gh.addColorStop(1,   'rgba(0,0,0,0.18)');
+  c.fillStyle = gh;
+  c.fillRect(0, 0, S, S);
+
+  // Top bevel — bright edge
+  const bT = c.createLinearGradient(0, 0, 0, S * 0.11);
+  bT.addColorStop(0, 'rgba(255,255,255,0.70)');
+  bT.addColorStop(1, 'rgba(255,255,255,0)');
+  c.fillStyle = bT;
+  c.fillRect(0, 0, S, Math.ceil(S * 0.11));
+
+  // Bottom bevel — dark edge
+  const bB = c.createLinearGradient(0, S - S * 0.09, 0, S);
+  bB.addColorStop(0, 'rgba(0,0,0,0)');
+  bB.addColorStop(1, 'rgba(0,0,0,0.42)');
+  c.fillStyle = bB;
+  c.fillRect(0, Math.floor(S * 0.91), S, Math.ceil(S * 0.09));
+
+  // Left bevel — thin bright strip
+  const bL = c.createLinearGradient(0, 0, Math.ceil(S * 0.06), 0);
+  bL.addColorStop(0, 'rgba(255,255,255,0.48)');
+  bL.addColorStop(1, 'rgba(255,255,255,0)');
+  c.fillStyle = bL;
+  c.fillRect(0, 0, Math.ceil(S * 0.06), S);
+
+  // Right bevel — thin dark strip
+  const bR = c.createLinearGradient(S - Math.ceil(S * 0.05), 0, S, 0);
+  bR.addColorStop(0, 'rgba(0,0,0,0)');
+  bR.addColorStop(1, 'rgba(0,0,0,0.22)');
+  c.fillStyle = bR;
+  c.fillRect(Math.floor(S * 0.95), 0, Math.ceil(S * 0.05), S);
+
+  // Top-left corner shine — radial glow
+  const shine = c.createRadialGradient(S * 0.18, S * 0.14, 0, S * 0.18, S * 0.14, S * 0.42);
+  shine.addColorStop(0,   'rgba(255,255,255,0.50)');
+  shine.addColorStop(0.4, 'rgba(255,255,255,0.16)');
+  shine.addColorStop(1,   'rgba(255,255,255,0)');
+  c.fillStyle = shine;
+  c.fillRect(0, 0, S * 0.65, S * 0.55);
+
+  // Subtle inner stroke (depth illusion)
+  c.strokeStyle = 'rgba(0,0,0,0.10)';
+  c.lineWidth = 1;
+  c.strokeRect(0.5, 0.5, S - 1, S - 1);
+
+  if (isPerfect) {
+    // Golden diagonal shimmer
+    const pg = c.createLinearGradient(0, 0, S, S);
+    pg.addColorStop(0,   'rgba(255,230,0,0.28)');
+    pg.addColorStop(0.45,'rgba(255,200,0,0.06)');
+    pg.addColorStop(1,   'rgba(255,160,0,0.28)');
+    c.fillStyle = pg;
+    c.fillRect(0, 0, S, S);
+    // Gold inner border
+    c.shadowColor = '#FFD700';
+    c.shadowBlur = 6;
+    c.strokeStyle = 'rgba(255,215,0,0.85)';
+    c.lineWidth = 2;
+    c.strokeRect(1.5, 1.5, S - 3, S - 3);
+    c.shadowBlur = 0;
   }
 }
 
-function drawBlockClassic(bx, by, color, isPerfect) {
-  const grad = ctx.createLinearGradient(bx, by, bx, by + BS);
-  grad.addColorStop(0, shadeColor(color, 28));
-  grad.addColorStop(1, shadeColor(color, -18));
-  ctx.fillStyle = grad;
-  ctx.fillRect(bx, by, BS, BS);
-  // Side highlight
-  const sG = ctx.createLinearGradient(bx, by, bx + 7, by);
-  sG.addColorStop(0, 'rgba(255,255,255,0.32)');
-  sG.addColorStop(1, 'rgba(255,255,255,0)');
-  ctx.fillStyle = sG;
-  ctx.fillRect(bx, by, 7, BS);
-  // Bottom shadow
-  ctx.fillStyle = 'rgba(0,0,0,0.22)';
-  ctx.fillRect(bx, by + BS - 4, BS, 4);
-  // Top highlight
-  ctx.fillStyle = 'rgba(255,255,255,0.32)';
-  ctx.fillRect(bx, by, BS, 2);
-  if (isPerfect) { ctx.fillStyle = 'rgba(255,215,0,0.18)'; ctx.fillRect(bx, by, BS, BS); }
-}
+// ──────────────────────────────────────────────────────────────
+// Sprite: CYBERPUNK — circuit board with neon traces & glow
+// ──────────────────────────────────────────────────────────────
+function buildSpriteCyberpunk(c, color, isPerfect, S) {
+  const lw = Math.max(1, Math.floor(S / 22)); // line/trace width
 
-function drawBlockCyberpunk(bx, by, color, isPerfect) {
-  // Dark interior
-  ctx.fillStyle = '#00000D';
-  ctx.fillRect(bx, by, BS, BS);
-  // Neon glow border
-  ctx.shadowColor = color;
-  ctx.shadowBlur = isPerfect ? 20 : 10;
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 2;
-  ctx.strokeRect(bx + 1.5, by + 1.5, BS - 3, BS - 3);
-  ctx.shadowBlur = 0;
-  // Subtle color fill
-  ctx.fillStyle = color + '1A';
-  ctx.fillRect(bx + 2, by + 2, BS - 4, BS - 4);
-  // Horizontal scan lines inside
-  ctx.fillStyle = color + '28';
-  for (let sy = by + 7; sy < by + BS - 3; sy += 7) {
-    ctx.fillRect(bx + 3, sy, BS - 6, 1);
+  // Base: near-black
+  c.fillStyle = '#01000F';
+  c.fillRect(0, 0, S, S);
+
+  // Subtle color tint fill
+  c.fillStyle = color + '14';
+  c.fillRect(0, 0, S, S);
+
+  // Horizontal scanlines
+  c.fillStyle = 'rgba(0,0,0,0.30)';
+  for (let y = 0; y < S; y += 3) c.fillRect(0, y, S, 1);
+
+  // ── Circuit traces ──
+  c.strokeStyle = color + '70';
+  c.lineWidth = lw;
+  c.lineJoin = 'miter';
+
+  // Trace 1: L-shape from left edge → right, then up
+  c.beginPath();
+  c.moveTo(S * 0.08, S * 0.38);
+  c.lineTo(S * 0.52, S * 0.38);
+  c.lineTo(S * 0.52, S * 0.18);
+  c.stroke();
+
+  // Trace 2: from top → down, then right
+  c.beginPath();
+  c.moveTo(S * 0.72, S * 0.08);
+  c.lineTo(S * 0.72, S * 0.62);
+  c.lineTo(S * 0.57, S * 0.62);
+  c.stroke();
+
+  // Trace 3: short horizontal at bottom
+  c.beginPath();
+  c.moveTo(S * 0.14, S * 0.78);
+  c.lineTo(S * 0.42, S * 0.78);
+  c.stroke();
+
+  // Node circles at trace intersections
+  c.fillStyle = color + 'CC';
+  [[S * 0.52, S * 0.38], [S * 0.72, S * 0.38], [S * 0.72, S * 0.62], [S * 0.42, S * 0.78]].forEach(([nx, ny]) => {
+    c.beginPath();
+    c.arc(nx, ny, lw * 2, 0, Math.PI * 2);
+    c.fill();
+  });
+
+  // ── Corner bracket markers ──
+  const bs = Math.floor(S * 0.19);
+  c.fillStyle = isPerfect ? '#FFFFFF' : color;
+  // Top-left
+  c.fillRect(0,        0,        bs, lw);   c.fillRect(0,      0,      lw, bs);
+  // Top-right
+  c.fillRect(S - bs,   0,        bs, lw);   c.fillRect(S - lw, 0,      lw, bs);
+  // Bottom-left
+  c.fillRect(0,        S - lw,   bs, lw);   c.fillRect(0,      S - bs, lw, bs);
+  // Bottom-right
+  c.fillRect(S - bs,   S - lw,   bs, lw);   c.fillRect(S - lw, S - bs, lw, bs);
+
+  // ── Neon border with glow ──
+  const glowBlur = isPerfect ? 14 : 7;
+  c.shadowColor = color;
+  c.shadowBlur = glowBlur;
+  c.strokeStyle = color;
+  c.lineWidth = isPerfect ? 2 : 1.5;
+  const inset = lw + 0.5;
+  c.strokeRect(inset, inset, S - inset * 2, S - inset * 2);
+  c.shadowBlur = 0;
+
+  if (isPerfect) {
+    // Second inner glow ring
+    c.shadowColor = color;
+    c.shadowBlur = 22;
+    c.strokeStyle = color + 'AA';
+    c.lineWidth = 1;
+    c.strokeRect(lw * 3, lw * 3, S - lw * 6, S - lw * 6);
+    c.shadowBlur = 0;
   }
-  if (isPerfect) { ctx.fillStyle = color + '3A'; ctx.fillRect(bx + 2, by + 2, BS - 4, BS - 4); }
 }
 
-function drawBlockAscii(bx, by, color, isPerfect) {
-  ctx.fillStyle = '#001100';
-  ctx.fillRect(bx, by, BS, BS);
-  ctx.strokeStyle = isPerfect ? '#88FF44' : color;
-  ctx.lineWidth = 1;
-  ctx.strokeRect(bx + 0.5, by + 0.5, BS - 1, BS - 1);
-  // Inner second border (ASCII double-frame feel)
-  ctx.strokeStyle = (isPerfect ? '#88FF44' : color) + '55';
-  ctx.strokeRect(bx + 3.5, by + 3.5, BS - 7, BS - 7);
-  // Fill pattern
-  ctx.fillStyle = (isPerfect ? '#88FF44' : color) + '22';
-  ctx.fillRect(bx + 4, by + 4, BS - 8, BS - 8);
-}
+// ──────────────────────────────────────────────────────────────
+// Sprite: ASCII — terminal box with box-drawing chars & CRT glow
+// ──────────────────────────────────────────────────────────────
+function buildSpriteAscii(c, color, isPerfect, S) {
+  const fSize  = Math.max(9, Math.floor(S / 6.5));
+  const fW     = Math.ceil(fSize * 0.62); // approx monospace char width
+  const bright = isPerfect ? '#88FF44' : color;
 
-function drawBlockPixel(bx, by, color, isPerfect) {
-  const px = Math.max(1, Math.floor(BS / 8));
-  // Base fill
-  ctx.fillStyle = color;
-  ctx.fillRect(bx, by, BS, BS);
-  // Dither (alternating darker pixels)
-  ctx.fillStyle = shadeColor(color, -18);
-  for (let r = 1; r < 7; r++) {
-    for (let c = 1; c < 7; c++) {
-      if ((r + c) % 2 === 1) ctx.fillRect(bx + c * px, by + r * px, px, px);
+  // Base — dark terminal green
+  c.fillStyle = isPerfect ? '#001f00' : '#001100';
+  c.fillRect(0, 0, S, S);
+
+  // CRT scanlines
+  c.fillStyle = 'rgba(0,0,0,0.32)';
+  for (let y = 0; y < S; y += 2) c.fillRect(0, y, S, 1);
+
+  // ── Box drawing border ──
+  c.font = `${fSize}px 'Courier New',Courier,monospace`;
+  c.textBaseline = 'top';
+  c.textAlign = 'left';
+  c.fillStyle = bright;
+
+  const numCols = Math.max(1, Math.floor((S - fW * 2) / fW));
+  const numRows = Math.max(1, Math.floor((S - fSize * 2) / fSize));
+  const dash = '═'.repeat(numCols);
+
+  // Top & bottom border lines
+  c.fillText('╔' + dash + '╗', 0, 0);
+  c.fillText('╚' + dash + '╝', 0, S - fSize);
+
+  // Left & right side bars
+  for (let r = 0; r < numRows; r++) {
+    const ry = fSize + r * fSize;
+    if (ry >= S - fSize) break;
+    c.fillText('║', 0, ry);
+    c.fillText('║', S - fW, ry);
+  }
+
+  // ── Interior: '░' character fill ──
+  const ifSize = Math.max(6, Math.floor(S / 9));
+  const ifW    = Math.ceil(ifSize * 0.62);
+  c.font = `${ifSize}px 'Courier New',Courier,monospace`;
+  c.fillStyle = bright + (isPerfect ? '90' : '55');
+
+  for (let ry = fSize + 2; ry < S - fSize - 2; ry += ifSize) {
+    for (let rx = fW + 2; rx < S - fW - 2; rx += ifW) {
+      c.fillText(isPerfect ? '▓' : '░', rx, ry);
     }
   }
-  // Top-left highlight
-  ctx.fillStyle = shadeColor(color, 42);
-  ctx.fillRect(bx, by, BS, px);
-  ctx.fillRect(bx, by, px, BS);
-  // Bottom-right shadow
-  ctx.fillStyle = shadeColor(color, -42);
-  ctx.fillRect(bx, by + BS - px, BS, px);
-  ctx.fillRect(bx + BS - px, by, px, BS);
-  // Black border
-  ctx.strokeStyle = '#000000';
-  ctx.lineWidth = 1;
-  ctx.strokeRect(bx + 0.5, by + 0.5, BS - 1, BS - 1);
+
+  // ── Phosphor glow overlay ──
+  const glow = c.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S * 0.72);
+  glow.addColorStop(0, 'rgba(0,200,0,0.06)');
+  glow.addColorStop(1, 'rgba(0,60,0,0.14)');
+  c.fillStyle = glow;
+  c.fillRect(0, 0, S, S);
+
   if (isPerfect) {
-    ctx.strokeStyle = '#FFFF00';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(bx + 1.5, by + 1.5, BS - 3, BS - 3);
+    // Bright outer stroke
+    c.shadowColor = bright;
+    c.shadowBlur = 8;
+    c.strokeStyle = bright;
+    c.lineWidth = 1;
+    c.strokeRect(0.5, 0.5, S - 1, S - 1);
+    c.shadowBlur = 0;
+  }
+}
+
+// ──────────────────────────────────────────────────────────────
+// Sprite: PIXEL — NES-style hard-edge block with rivet detail
+// ──────────────────────────────────────────────────────────────
+function buildSpritePixel(c, color, isPerfect, S) {
+  const P = Math.max(2, Math.floor(S / 10)); // pixel unit
+
+  // Base fill
+  c.fillStyle = color;
+  c.fillRect(0, 0, S, S);
+
+  // Inner panel (slightly lighter — creates depth illusion)
+  c.fillStyle = shadeColor(color, 10);
+  c.fillRect(P * 2, P * 2, S - P * 4, S - P * 4);
+
+  // Dither pattern inside panel (every other pixel darker)
+  c.fillStyle = shadeColor(color, -14);
+  for (let r = P * 2; r < S - P * 2; r += P) {
+    const offset = (Math.floor(r / P) % 2 === 0) ? 0 : P;
+    for (let col = P * 2 + offset; col < S - P * 2; col += P * 2) {
+      c.fillRect(col, r, P, P);
+    }
+  }
+
+  // Top highlight strip (1-unit, bright)
+  c.fillStyle = shadeColor(color, 58);
+  c.fillRect(0, 0, S, P);
+  c.fillRect(0, 0, P, S);
+
+  // Second highlight strip (softer)
+  c.fillStyle = shadeColor(color, 30);
+  c.fillRect(P, P, S - P * 2, P);
+  c.fillRect(P, P, P, S - P * 2);
+
+  // Bottom shadow strip (darkest)
+  c.fillStyle = shadeColor(color, -58);
+  c.fillRect(0, S - P, S, P);
+  c.fillRect(S - P, 0, P, S);
+
+  // Second shadow strip (softer)
+  c.fillStyle = shadeColor(color, -30);
+  c.fillRect(P, S - P * 2, S - P * 2, P);
+  c.fillRect(S - P * 2, P, P, S - P * 2);
+
+  // Corner rivets — small squares inset from corners
+  const rv = Math.ceil(P * 1.4);
+  const rOff = P * 2;
+  c.fillStyle = shadeColor(color, -68);
+  c.fillRect(rOff, rOff, rv, rv);                       // TL
+  c.fillRect(S - rOff - rv, rOff, rv, rv);              // TR
+  c.fillRect(rOff, S - rOff - rv, rv, rv);              // BL
+  c.fillRect(S - rOff - rv, S - rOff - rv, rv, rv);    // BR
+
+  // Rivet highlight (top-left pixel of each rivet)
+  const rh = Math.ceil(rv / 2);
+  c.fillStyle = shadeColor(color, 32);
+  c.fillRect(rOff, rOff, rh, rh);
+  c.fillRect(S - rOff - rv, rOff, rh, rh);
+  c.fillRect(rOff, S - rOff - rv, rh, rh);
+  c.fillRect(S - rOff - rv, S - rOff - rv, rh, rh);
+
+  // Hard 1px black outline (no anti-alias feel)
+  c.strokeStyle = '#000000';
+  c.lineWidth = 1;
+  c.strokeRect(0.5, 0.5, S - 1, S - 1);
+
+  // Perfect: gold inner border
+  if (isPerfect) {
+    c.strokeStyle = '#FFFF00';
+    c.lineWidth = Math.max(1, P - 1);
+    c.strokeRect(P - 0.5, P - 0.5, S - P * 2 + 1, S - P * 2 + 1);
   }
 }
 
@@ -2086,15 +2319,13 @@ function applySettings() {
     const key = input.dataset.key;
     let val = parseFloat(input.value);
     if (isNaN(val)) continue;
-    // Convert degrees → radians for angle params
     const def = SETTINGS_DEFS.find(d => d.key === key);
     if (def && def.toRad) val = val * Math.PI / 180;
     CFG[key] = val;
   }
-  // Recompute derived values
   BS = CFG.blockSize;
-  // Update BS shortcut isn't needed since BS is const, but game uses CFG.blockSize directly in many places
-  // cableLength is now a direct number
+  // Clear sprite cache — sprites must be rebuilt at new BS
+  Object.keys(SPRITE_CACHE).forEach(k => delete SPRITE_CACHE[k]);
   closeSettings();
   startGame();
 }
