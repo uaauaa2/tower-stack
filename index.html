@@ -20,6 +20,13 @@
     width: 100vw;
     height: 100vh;
   }
+  @media (min-width: 768px) {
+    canvas {
+      max-width: 480px;
+      max-height: 100vh;
+      margin: 0 auto;
+    }
+  }
 </style>
 </head>
 <body>
@@ -248,6 +255,13 @@ function resize() {
   canvas.style.width = W + 'px';
   canvas.style.height = H + 'px';
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+
+  // Scale block size relative to screen width
+  // Design baseline: 90px block on 375px-wide phone (~24% of width)
+  BS = Math.max(40, Math.round(W * 0.24));
+  CFG.blockSize = BS;
+  CFG.cableLength = BS * 4;
+  CFG.perfectTolerance = Math.max(2, Math.round(BS * 0.033));
 }
 window.addEventListener('resize', resize);
 resize();
@@ -2056,32 +2070,33 @@ function drawHUD() {
   if (isCyber) { ctx.shadowColor = th.hudColor; ctx.shadowBlur = 8; }
 
   // Score
+  const su = Math.max(14, W * 0.065); // scale unit
   ctx.fillStyle = th.hudColor;
-  ctx.font = `bold 26px ${th.fontFamily}`;
+  ctx.font = `bold ${su}px ${th.fontFamily}`;
   ctx.textAlign = 'left';
-  ctx.fillText(`${score}`, 16, 36);
+  ctx.fillText(`${score}`, su * 0.6, su * 1.4);
 
   // Floors
-  ctx.font = `14px ${th.fontFamily}`;
+  ctx.font = `${su * 0.55}px ${th.fontFamily}`;
   ctx.fillStyle = isCyber ? th.hudColor + 'BB' : isAscii ? '#00CC33' : 'rgba(255,255,255,0.7)';
-  ctx.fillText(`${floorCount()} floors`, 16, 54);
+  ctx.fillText(`${floorCount()} floors`, su * 0.6, su * 2.1);
   ctx.shadowBlur = 0;
 
   // Lives (top center)
   ctx.textAlign = 'center';
-  ctx.font = '20px sans-serif';
+  ctx.font = `${su * 0.8}px sans-serif`;
   let livesStr = '';
   for (let i = 0; i < CFG.maxLives; i++) livesStr += i < lives ? '❤️' : '🖤';
   ctx.fillStyle = th.hudColor;
-  ctx.fillText(livesStr, W / 2, 36);
+  ctx.fillText(livesStr, W / 2, su * 1.4);
 
   // Combo
   if (combo > 0) {
     ctx.textAlign = 'right';
-    ctx.font = `bold ${18 + combo}px ${th.fontFamily}`;
+    ctx.font = `bold ${su * 0.7 + combo}px ${th.fontFamily}`;
     ctx.fillStyle = th.hudComboColor;
     if (isCyber) { ctx.shadowColor = th.hudComboColor; ctx.shadowBlur = 12; }
-    ctx.fillText(`×${combo + 1}`, W - 16, 36);
+    ctx.fillText(`×${combo + 1}`, W - su * 0.6, su * 1.4);
     ctx.shadowBlur = 0;
   }
 
@@ -2090,7 +2105,7 @@ function drawHUD() {
     ctx.globalAlpha = hintOpacity;
     ctx.textAlign = 'center';
     ctx.fillStyle = isAscii ? '#00FF41' : isCyber ? th.hudColor + 'AA' : 'rgba(255,255,255,0.5)';
-    ctx.font = `18px ${th.fontFamily}`;
+    ctx.font = `${su * 0.7}px ${th.fontFamily}`;
     ctx.fillText('TAP TO DROP', W/2, H * 0.5);
     ctx.globalAlpha = 1;
   }
@@ -2107,6 +2122,7 @@ function drawMenu() {
   const t = Date.now() / 1000;
   const bounce = Math.sin(menuAnim * 3) * 3;
   const titleY = H * 0.22 + bounce;
+  const su = Math.max(14, W * 0.065); // scale unit
 
   // --- Background ---
   if (th.id === 'cyberpunk') {
@@ -2147,23 +2163,23 @@ function drawMenu() {
 
   // --- Title ---
   ctx.textAlign = 'center';
-  if (th.id === 'classic') { ctx.font = '48px sans-serif'; ctx.fillText('🏗️', W/2, titleY - 40); }
+  if (th.id === 'classic') { ctx.font = `${su}px sans-serif`; ctx.fillText('🏗️', W/2, titleY - su * 0.8); }
   if (th.id === 'cyberpunk') { ctx.shadowColor = th.menuTextColor; ctx.shadowBlur = 22; }
   ctx.fillStyle = th.menuTextColor;
-  ctx.font = `bold 40px ${th.fontFamily}`;
+  ctx.font = `bold ${su * 1.6}px ${th.fontFamily}`;
   ctx.fillText('TOWER', W/2, titleY);
-  ctx.fillText('STACK', W/2, titleY + 46);
+  ctx.fillText('STACK', W/2, titleY + su * 1.8);
   ctx.shadowBlur = 0;
 
   const data = Storage.load();
   if (data.highScore > 0) {
     ctx.fillStyle = th.id === 'cyberpunk' ? th.hudComboColor : th.id === 'ascii' ? '#00CC33' : 'rgba(255,255,255,0.6)';
-    ctx.font = `16px ${th.fontFamily}`;
-    ctx.fillText(`Best: ${data.highScore}`, W/2, titleY + 80);
+    ctx.font = `${su * 0.65}px ${th.fontFamily}`;
+    ctx.fillText(`Best: ${data.highScore}`, W/2, titleY + su * 3.1);
   }
 
   buttons = [];
-  const btnW = 220, btnH = 52;
+  const btnW = W * 0.6, btnH = su * 2.1;
   drawButton(W/2, H * 0.56, btnW, btnH, '▶  PLAY', 'primary');
   addButton('PLAY', W/2, H * 0.56, btnW, btnH, () => startGame(), 'primary');
 
@@ -2178,10 +2194,11 @@ function drawMenu() {
 
 function drawGameOver() {
   const th = theme();
+  const su = Math.max(14, W * 0.065);
   ctx.fillStyle = 'rgba(0,0,0,0.55)';
   ctx.fillRect(0, 0, W, H);
 
-  const cardW = 280, cardH = 340;
+  const cardW = W * 0.78, cardH = su * 14;
   const cardX = W/2 - cardW/2, cardY = H/2 - cardH/2;
   const slideUp = Math.min(1, gameOverTimer * 3);
 
@@ -2205,12 +2222,13 @@ function drawGameOver() {
     ctx.fillStyle = '#000088';
     ctx.fillRect(cardX, cardY, cardW, cardH);
     ctx.fillStyle = '#FFFFFF';
-    ctx.fillRect(cardX, cardY, cardW, 4); ctx.fillRect(cardX, cardY+cardH-4, cardW, 4);
-    ctx.fillRect(cardX, cardY, 4, cardH); ctx.fillRect(cardX+cardW-4, cardY, 4, cardH);
+    const bw = Math.max(2, su * 0.15);
+    ctx.fillRect(cardX, cardY, cardW, bw); ctx.fillRect(cardX, cardY+cardH-bw, cardW, bw);
+    ctx.fillRect(cardX, cardY, bw, cardH); ctx.fillRect(cardX+cardW-bw, cardY, bw, cardH);
   } else {
     ctx.fillStyle = '#FFFFFF';
     ctx.shadowColor = 'rgba(0,0,0,0.2)'; ctx.shadowBlur = 20;
-    roundRect(cardX, cardY, cardW, cardH, 16); ctx.fill();
+    roundRect(cardX, cardY, cardW, cardH, su * 0.6); ctx.fill();
     ctx.shadowBlur = 0;
   }
 
@@ -2220,36 +2238,37 @@ function drawGameOver() {
 
   if (th.id === 'cyberpunk') { ctx.shadowColor = '#00FFFF'; ctx.shadowBlur = 10; }
   ctx.fillStyle = titleClr;
-  ctx.font = `bold 28px ${th.fontFamily}`;
-  ctx.fillText('GAME OVER', W/2, cardY + 45);
+  ctx.font = `bold ${su * 1.1}px ${th.fontFamily}`;
+  ctx.fillText('GAME OVER', W/2, cardY + su * 1.9);
   ctx.shadowBlur = 0;
 
-  ctx.font = `18px ${th.fontFamily}`;
+  ctx.font = `${su * 0.7}px ${th.fontFamily}`;
   ctx.fillStyle = bodyClr;
-  ctx.fillText(`Height: ${floorCount()}`, W/2, cardY + 90);
-  ctx.fillText(`Score: ${score}`, W/2, cardY + 120);
-  ctx.fillText(`Best combo: ×${bestCombo}`, W/2, cardY + 150);
+  ctx.fillText(`Height: ${floorCount()}`, W/2, cardY + su * 3.7);
+  ctx.fillText(`Score: ${score}`, W/2, cardY + su * 5);
+  ctx.fillText(`Best combo: ×${bestCombo}`, W/2, cardY + su * 6.3);
 
   const data = Storage.load();
   if (data.highScore > 0) {
     ctx.fillStyle = th.hudComboColor;
-    ctx.font = `bold 16px ${th.fontFamily}`;
-    ctx.fillText(`High Score: ${data.highScore}`, W/2, cardY + 185);
+    ctx.font = `bold ${su * 0.65}px ${th.fontFamily}`;
+    ctx.fillText(`High Score: ${data.highScore}`, W/2, cardY + su * 7.8);
   }
 
-  const btnW = 200, btnH = 44;
-  drawButton(W/2, cardY + 230, btnW, btnH, '▶  RETRY', 'primary');
-  drawButton(W/2, cardY + 290, btnW, btnH, '🏙  MY CITY', 'secondary');
+  const btnW = cardW * 0.72, btnH = su * 1.8;
+  drawButton(W/2, cardY + su * 9.5, btnW, btnH, '▶  RETRY', 'primary');
+  drawButton(W/2, cardY + su * 11.8, btnW, btnH, '🏙  MY CITY', 'secondary');
 
   ctx.restore();
   buttons = [];
-  addButton('RETRY', W/2, cardY + 230, btnW, btnH, () => startGame(), 'primary');
-  addButton('CITY', W/2, cardY + 290, btnW, btnH, () => { state = STATES.CITY_VIEW; cityScrollX = 0; }, 'secondary');
+  addButton('RETRY', W/2, cardY + su * 9.5, btnW, btnH, () => startGame(), 'primary');
+  addButton('CITY', W/2, cardY + su * 11.8, btnW, btnH, () => { state = STATES.CITY_VIEW; cityScrollX = 0; }, 'secondary');
   ctx.textAlign = 'left';
 }
 
 function drawCityView() {
   const th = theme();
+  const su = Math.max(14, W * 0.065);
 
   // Background
   if (th.id === 'cyberpunk') {
@@ -2284,8 +2303,8 @@ function drawCityView() {
   ctx.textAlign='center';
   if (th.id==='cyberpunk'){ctx.shadowColor=th.hudColor;ctx.shadowBlur=14;}
   ctx.fillStyle=th.menuTextColor;
-  ctx.font=`bold 28px ${th.fontFamily}`;
-  ctx.fillText('MY CITY',W/2,50);
+  ctx.font=`bold ${su * 1.1}px ${th.fontFamily}`;
+  ctx.fillText('MY CITY',W/2,su*2);
   ctx.shadowBlur=0;
 
   const data = Storage.load();
@@ -2293,29 +2312,29 @@ function drawCityView() {
 
   if (towers.length===0) {
     ctx.fillStyle = th.id==='ascii'?'#00CC33':th.id==='cyberpunk'?th.hudColor+'AA':'rgba(255,255,255,0.4)';
-    ctx.font=`18px ${th.fontFamily}`;
+    ctx.font=`${su * 0.7}px ${th.fontFamily}`;
     ctx.fillText('Build your first tower!',W/2,H*0.4);
     ctx.strokeStyle=th.id==='ascii'?'#00FF41':th.id==='cyberpunk'?'rgba(0,255,255,0.3)':'rgba(255,255,255,0.15)';
     ctx.lineWidth=2; ctx.setLineDash([5,5]);
-    ctx.strokeRect(W/2-25,H*0.48,50,100); ctx.setLineDash([]);
+    ctx.strokeRect(W/2-su,H*0.48,su*2,H*0.2); ctx.setLineDash([]);
   } else {
     const sorted=[...towers].sort((a,b)=>a.height-b.height);
     const maxH=Math.max(...sorted.map(tw=>tw.height));
     const groundY=H*0.82;
-    const towerSpacing=70;
-    const startX=40-cityScrollX;
+    const towerSpacing=su*2.8;
+    const startX=su*1.5-cityScrollX;
 
     ctx.fillStyle=th.id==='cyberpunk'?'#0A0025':th.id==='ascii'?'#001100':th.id==='pixel'?'#5B3A1A':'#2A3A4A';
     ctx.fillRect(0,groundY,W,H-groundY);
     ctx.fillStyle=th.id==='cyberpunk'?'#00FFFF':th.id==='ascii'?'#00FF41':th.id==='pixel'?'#00BB00':'#3A4A5A';
     ctx.fillRect(0,groundY,W,3);
 
+    const tWidth=su*1.8;
     sorted.forEach((tw,i)=>{
       const tx=startX+i*towerSpacing;
       if(tx>W+50||tx<-80) return;
       const maxDrawH=H*0.6;
-      const tH=Math.max(20,(tw.height/Math.max(maxH,1))*maxDrawH);
-      const tWidth=45;
+      const tH=Math.max(su*0.8,(tw.height/Math.max(maxH,1))*maxDrawH);
       const color=th.blockColors[i%th.blockColors.length];
       ctx.fillStyle=color;
       ctx.fillRect(tx,groundY-tH,tWidth,tH);
@@ -2324,32 +2343,37 @@ function drawCityView() {
       ctx.fillStyle='rgba(255,255,255,0.15)';
       ctx.fillRect(tx,groundY-tH,tWidth,2);
       ctx.fillStyle='rgba(255,255,200,0.25)';
-      for(let wy=groundY-tH+12;wy<groundY-6;wy+=12)
-        for(let wx=tx+7;wx<tx+tWidth-7;wx+=12)
-          ctx.fillRect(wx,wy,5,5);
+      const winS=Math.max(3,su*0.2);
+      const winG=Math.max(4,su*0.5);
+      for(let wy=groundY-tH+winG;wy<groundY-winS;wy+=winG)
+        for(let wx=tx+winS;wx<tx+tWidth-winS;wx+=winG)
+          ctx.fillRect(wx,wy,winS,winS);
       ctx.fillStyle=th.menuTextColor;
-      ctx.font=`bold 11px ${th.fontFamily}`;
+      ctx.font=`bold ${su*0.45}px ${th.fontFamily}`;
       ctx.textAlign='center';
-      ctx.fillText(`${tw.height}`,tx+tWidth/2,groundY-tH-6);
+      ctx.fillText(`${tw.height}`,tx+tWidth/2,groundY-tH-su*0.25);
     });
   }
 
   ctx.fillStyle=th.id==='ascii'?'#00CC33':th.id==='cyberpunk'?th.hudColor+'AA':'rgba(255,255,255,0.5)';
-  ctx.font=`14px ${th.fontFamily}`;
+  ctx.font=`${su*0.55}px ${th.fontFamily}`;
   ctx.textAlign='center';
-  ctx.fillText(`Towers: ${data.totalTowers}  |  Highest: ${data.highestTower}`,W/2,H-95);
+  ctx.fillText(`Towers: ${data.totalTowers}  |  Highest: ${data.highestTower}`,W/2,H-su*4);
 
   buttons=[];
-  drawButton(W/2-55,H-55,100,42,'← BACK','secondary');
-  drawButton(W/2+55,H-55,100,42,'▶ PLAY','primary');
-  addButton('BACK',W/2-55,H-55,100,42,()=>{state=STATES.MENU;},'secondary');
-  addButton('PLAY',W/2+55,H-55,100,42,()=>startGame(),'primary');
+  const btnW2=su*4, btnH2=su*1.7;
+  drawButton(W/2-btnW2*0.55,H-su*2.2,btnW2,btnH2,'← BACK','secondary');
+  drawButton(W/2+btnW2*0.55,H-su*2.2,btnW2,btnH2,'▶ PLAY','primary');
+  addButton('BACK',W/2-btnW2*0.55,H-su*2.2,btnW2,btnH2,()=>{state=STATES.MENU;},'secondary');
+  addButton('PLAY',W/2+btnW2*0.55,H-su*2.2,btnW2,btnH2,()=>startGame(),'primary');
   ctx.textAlign='left';
 }
 
 function drawButton(cx, cy, w, h, label, style) {
   const th = theme();
   const x = cx - w/2, y = cy - h/2;
+  const fSize = Math.max(13, h * 0.36);
+  const fOff = h * 0.12;
 
   if (th.id === 'cyberpunk') {
     const nc = style === 'primary' ? '#00FFFF' : '#FF00FF';
@@ -2360,35 +2384,36 @@ function drawButton(cx, cy, w, h, label, style) {
     roundRect(x, y, w, h, 6); ctx.stroke();
     ctx.shadowBlur = 0;
     ctx.fillStyle = nc;
-    ctx.font = `bold 17px ${th.fontFamily}`;
-    ctx.textAlign = 'center'; ctx.fillText(label, cx, cy + 6);
+    ctx.font = `bold ${fSize}px ${th.fontFamily}`;
+    ctx.textAlign = 'center'; ctx.fillText(label, cx, cy + fOff);
   } else if (th.id === 'ascii') {
     ctx.fillStyle = '#001100';
     roundRect(x, y, w, h, 4); ctx.fill();
     ctx.strokeStyle = '#00FF41'; ctx.lineWidth = 1;
     roundRect(x, y, w, h, 4); ctx.stroke();
     ctx.fillStyle = '#00FF41';
-    ctx.font = `bold 17px ${th.fontFamily}`;
-    ctx.textAlign = 'center'; ctx.fillText(label, cx, cy + 6);
+    ctx.font = `bold ${fSize}px ${th.fontFamily}`;
+    ctx.textAlign = 'center'; ctx.fillText(label, cx, cy + fOff);
   } else if (th.id === 'pixel') {
     const bc = style === 'primary' ? '#2244FF' : '#AA0000';
+    const bw = Math.max(2, h * 0.07);
     ctx.fillStyle = bc; ctx.fillRect(x, y, w, h);
     ctx.fillStyle = 'rgba(255,255,255,0.32)';
-    ctx.fillRect(x, y, w, 3); ctx.fillRect(x, y, 3, h);
+    ctx.fillRect(x, y, w, bw); ctx.fillRect(x, y, bw, h);
     ctx.fillStyle = 'rgba(0,0,0,0.32)';
-    ctx.fillRect(x, y+h-3, w, 3); ctx.fillRect(x+w-3, y, 3, h);
+    ctx.fillRect(x, y+h-bw, w, bw); ctx.fillRect(x+w-bw, y, bw, h);
     ctx.fillStyle = '#FFFFFF';
-    ctx.font = `bold 17px ${th.fontFamily}`;
-    ctx.textAlign = 'center'; ctx.fillText(label, cx, cy + 6);
+    ctx.font = `bold ${fSize}px ${th.fontFamily}`;
+    ctx.textAlign = 'center'; ctx.fillText(label, cx, cy + fOff);
   } else {
     // Classic
     ctx.fillStyle = style === 'primary' ? '#4D96FF' : '#FF6B6B';
     ctx.shadowColor = 'rgba(0,0,0,0.15)'; ctx.shadowBlur = 8;
-    roundRect(x, y, w, h, 14); ctx.fill();
+    roundRect(x, y, w, h, Math.max(8, h * 0.25)); ctx.fill();
     ctx.shadowBlur = 0;
     ctx.fillStyle = '#FFFFFF';
-    ctx.font = `bold 17px ${th.fontFamily}`;
-    ctx.textAlign = 'center'; ctx.fillText(label, cx, cy + 5);
+    ctx.font = `bold ${fSize}px ${th.fontFamily}`;
+    ctx.textAlign = 'center'; ctx.fillText(label, cx, cy + fOff);
   }
   ctx.textAlign = 'left';
 }
