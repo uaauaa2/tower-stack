@@ -1194,57 +1194,65 @@ let bgObjects = [];
 const BG_ZONE_DEFS = [
   // Zone 0: Ground (floors 0–10)
   { zone: 0, spawns: [
-    { type: 'tree', count: 10, floorMin: 0, floorMax: 8, sizeRange: [15, 35], speedRange: [0.2, 0.5] },
-    { type: 'cloud', count: 5, floorMin: 1, floorMax: 10, sizeRange: [0.5, 1.0], speedRange: [5, 12] },
-    { type: 'bird', count: 5, floorMin: 2, floorMax: 10, sizeRange: [1, 1], speedRange: [15, 30] },
-    { type: 'kite', count: 2, floorMin: 3, floorMax: 8, sizeRange: [1, 1], speedRange: [2, 5] },
-    { type: 'balloon', count: 2, floorMin: 4, floorMax: 10, sizeRange: [1, 1.3], speedRange: [3, 7] },
+    { type: 'tree', count: 12, floorMin: 0, floorMax: 8, sizeRange: [15, 35], speedRange: [0.2, 0.5] },
+    { type: 'cloud', count: 6, floorMin: 1, floorMax: 10, sizeRange: [0.5, 1.0], speedRange: [5, 12] },
+    { type: 'bird', count: 6, floorMin: 1, floorMax: 10, sizeRange: [1, 1], speedRange: [15, 30] },
+    { type: 'kite', count: 3, floorMin: 3, floorMax: 9, sizeRange: [1, 1.2], speedRange: [2, 5] },
+    { type: 'balloon', count: 3, floorMin: 3, floorMax: 10, sizeRange: [1, 1.3], speedRange: [3, 7] },
+    { type: 'butterfly', count: 4, floorMin: 0, floorMax: 6, sizeRange: [1, 1], speedRange: [5, 12] },
   ]},
   // Zone 1: Low sky (floors 10–20)
   { zone: 1, spawns: [
-    { type: 'cloud', count: 6, floorMin: 10, floorMax: 20, sizeRange: [0.6, 1.2], speedRange: [4, 10] },
-    { type: 'bird', count: 4, floorMin: 10, floorMax: 18, sizeRange: [1, 1], speedRange: [12, 25] },
-    { type: 'balloon', count: 3, floorMin: 10, floorMax: 20, sizeRange: [0.8, 1.2], speedRange: [4, 8] },
+    { type: 'cloud', count: 8, floorMin: 10, floorMax: 20, sizeRange: [0.6, 1.2], speedRange: [4, 10] },
+    { type: 'bird', count: 5, floorMin: 10, floorMax: 18, sizeRange: [1, 1], speedRange: [12, 25] },
+    { type: 'balloon', count: 4, floorMin: 10, floorMax: 20, sizeRange: [0.8, 1.2], speedRange: [4, 8] },
     { type: 'helicopter', count: 2, floorMin: 12, floorMax: 20, sizeRange: [1, 1], speedRange: [10, 20] },
+    { type: 'kite', count: 2, floorMin: 10, floorMax: 15, sizeRange: [1, 1], speedRange: [3, 6] },
   ]},
   // Zone 2: Cloud layer (floors 20–30)
   { zone: 2, spawns: [
-    { type: 'cloud', count: 10, floorMin: 20, floorMax: 30, sizeRange: [0.8, 1.5], speedRange: [3, 8] },
-    { type: 'bird', count: 2, floorMin: 20, floorMax: 25, sizeRange: [1, 1], speedRange: [10, 18] },
-    { type: 'helicopter', count: 2, floorMin: 22, floorMax: 30, sizeRange: [1, 1], speedRange: [8, 16] },
+    { type: 'cloud', count: 12, floorMin: 20, floorMax: 30, sizeRange: [0.8, 1.5], speedRange: [3, 8] },
+    { type: 'bird', count: 3, floorMin: 20, floorMax: 25, sizeRange: [1, 1], speedRange: [10, 18] },
+    { type: 'helicopter', count: 3, floorMin: 22, floorMax: 30, sizeRange: [1, 1], speedRange: [8, 16] },
+    { type: 'balloon', count: 2, floorMin: 20, floorMax: 28, sizeRange: [0.7, 1.0], speedRange: [5, 9] },
   ]},
   // Zone 3: Above clouds (floors 30–40)
   { zone: 3, spawns: [
-    { type: 'cloud', count: 4, floorMin: 30, floorMax: 38, sizeRange: [0.4, 0.8], speedRange: [8, 15] },
+    { type: 'cloud', count: 5, floorMin: 30, floorMax: 38, sizeRange: [0.4, 0.8], speedRange: [8, 15] },
     { type: 'plane', count: 3, floorMin: 30, floorMax: 40, sizeRange: [1, 1], speedRange: [25, 45] },
-    { type: 'helicopter', count: 1, floorMin: 30, floorMax: 35, sizeRange: [1, 1], speedRange: [6, 12] },
+    { type: 'helicopter', count: 2, floorMin: 30, floorMax: 36, sizeRange: [1, 1], speedRange: [6, 12] },
+    { type: 'bird', count: 2, floorMin: 30, floorMax: 34, sizeRange: [0.8, 0.8], speedRange: [18, 28] },
   ]},
   // Zone 4: Stratosphere (floors 40–50)
   { zone: 4, spawns: [
-    { type: 'plane', count: 3, floorMin: 40, floorMax: 50, sizeRange: [1, 1.2], speedRange: [30, 50] },
-    { type: 'cloud', count: 2, floorMin: 40, floorMax: 45, sizeRange: [0.3, 0.5], speedRange: [10, 18] },
+    { type: 'plane', count: 4, floorMin: 40, floorMax: 50, sizeRange: [1, 1.2], speedRange: [30, 50] },
+    { type: 'cloud', count: 3, floorMin: 40, floorMax: 46, sizeRange: [0.3, 0.5], speedRange: [10, 18] },
+    { type: 'balloon', count: 2, floorMin: 42, floorMax: 48, sizeRange: [0.6, 0.8], speedRange: [3, 6] }, // weather balloon
   ]},
   // Zone 5: Mesosphere (floors 50–60)
   { zone: 5, spawns: [
-    { type: 'star', count: 20, floorMin: 50, floorMax: 60, sizeRange: [1, 2.5], speedRange: [0, 0] },
-    { type: 'satellite', count: 2, floorMin: 50, floorMax: 60, sizeRange: [1, 1], speedRange: [8, 15] },
-    { type: 'plane', count: 1, floorMin: 50, floorMax: 55, sizeRange: [0.8, 0.8], speedRange: [35, 50] },
-    { type: 'shootingStar', count: 1, floorMin: 55, floorMax: 60, sizeRange: [1, 1], speedRange: [80, 140] },
+    { type: 'star', count: 25, floorMin: 50, floorMax: 60, sizeRange: [1, 2.5], speedRange: [0, 0] },
+    { type: 'satellite', count: 3, floorMin: 50, floorMax: 60, sizeRange: [1, 1], speedRange: [8, 15] },
+    { type: 'plane', count: 1, floorMin: 50, floorMax: 55, sizeRange: [0.7, 0.7], speedRange: [35, 50] },
+    { type: 'shootingStar', count: 2, floorMin: 55, floorMax: 60, sizeRange: [1, 1], speedRange: [80, 140] },
+    { type: 'helicopter', count: 1, floorMin: 50, floorMax: 54, sizeRange: [0.6, 0.6], speedRange: [4, 8] },
   ]},
   // Zone 6: Thermosphere (floors 60–70)
   { zone: 6, spawns: [
-    { type: 'star', count: 30, floorMin: 60, floorMax: 70, sizeRange: [1.5, 3], speedRange: [0, 0] },
+    { type: 'star', count: 35, floorMin: 60, floorMax: 70, sizeRange: [1.5, 3], speedRange: [0, 0] },
     { type: 'satellite', count: 3, floorMin: 60, floorMax: 70, sizeRange: [1, 1], speedRange: [5, 12] },
-    { type: 'shootingStar', count: 2, floorMin: 62, floorMax: 70, sizeRange: [1, 1], speedRange: [100, 160] },
+    { type: 'shootingStar', count: 3, floorMin: 62, floorMax: 70, sizeRange: [1, 1], speedRange: [100, 160] },
     { type: 'aurora', count: 1, floorMin: 65, floorMax: 70, sizeRange: [1, 1], speedRange: [0.5, 1] },
+    { type: 'spaceStation', count: 1, floorMin: 66, floorMax: 70, sizeRange: [1, 1], speedRange: [3, 6] },
   ]},
   // Zone 7: Space (floors 70+)
   { zone: 7, spawns: [
-    { type: 'star', count: 50, floorMin: 70, floorMax: 90, sizeRange: [2, 4], speedRange: [0, 0] },
+    { type: 'star', count: 60, floorMin: 70, floorMax: 95, sizeRange: [2, 4], speedRange: [0, 0] },
     { type: 'satellite', count: 3, floorMin: 70, floorMax: 85, sizeRange: [1, 1.2], speedRange: [4, 10] },
-    { type: 'shootingStar', count: 3, floorMin: 72, floorMax: 90, sizeRange: [1, 1], speedRange: [120, 200] },
+    { type: 'shootingStar', count: 4, floorMin: 72, floorMax: 95, sizeRange: [1, 1], speedRange: [120, 200] },
     { type: 'aurora', count: 2, floorMin: 75, floorMax: 90, sizeRange: [1, 1], speedRange: [0.3, 0.8] },
     { type: 'ufo', count: 2, floorMin: 78, floorMax: 90, sizeRange: [1, 1], speedRange: [15, 30] },
+    { type: 'spaceStation', count: 1, floorMin: 80, floorMax: 90, sizeRange: [1.2, 1.2], speedRange: [2, 5] },
   ]},
 ];
 
@@ -1464,6 +1472,8 @@ function drawBackgroundClassic() {
       case 'shootingStar': drawShootingStar(obj, t, objScreenY); break;
       case 'aurora': drawAurora(obj, t, objScreenY); break;
       case 'ufo': drawUFO(obj, t, objScreenY); break;
+      case 'butterfly': drawButterfly(obj, t, objScreenY); break;
+      case 'spaceStation': drawSpaceStation(obj, t, objScreenY); break;
     }
 
     ctx.globalAlpha = 1;
@@ -1770,7 +1780,81 @@ function drawUFO(obj, t, screenY) {
   }
 }
 
-// ============================================================
+function drawButterfly(obj, t, screenY) {
+  const x = ((obj.x + t * obj.speed * obj.dir) % (W + 40)) - 20;
+  const y = screenY + Math.sin(t * 1.5 + obj.phase) * 15 + Math.cos(t * 2.3 + obj.phase) * 8;
+  const wingAngle = Math.sin(t * 10 + obj.phase) * 0.7;
+  const colors = ['#FF69B4','#FF6347','#FFD700','#87CEEB','#DDA0DD'];
+  const color = colors[Math.floor(obj.phase * 3) % colors.length];
+  // Left wing
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.fillStyle = color;
+  ctx.globalAlpha = 0.8;
+  ctx.beginPath();
+  ctx.ellipse(-3, 0, 6, 4 * Math.abs(Math.cos(wingAngle)), 0, 0, Math.PI * 2);
+  ctx.fill();
+  // Right wing
+  ctx.beginPath();
+  ctx.ellipse(3, 0, 6, 4 * Math.abs(Math.cos(wingAngle)), 0, 0, Math.PI * 2);
+  ctx.fill();
+  // Body
+  ctx.fillStyle = '#333';
+  ctx.globalAlpha = 1;
+  ctx.fillRect(-0.8, -4, 1.6, 8);
+  // Antennae
+  ctx.strokeStyle = '#333';
+  ctx.lineWidth = 0.5;
+  ctx.beginPath();
+  ctx.moveTo(-0.5, -4); ctx.lineTo(-4, -8); ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(0.5, -4); ctx.lineTo(4, -8); ctx.stroke();
+  ctx.restore();
+}
+
+function drawSpaceStation(obj, t, screenY) {
+  const x = ((obj.x + t * obj.speed * obj.dir) % (W + 100)) - 50;
+  const y = screenY + Math.sin(t * 0.15 + obj.phase) * 10;
+  const s = 12 * obj.size;
+  // Central module
+  ctx.fillStyle = '#C0C0C0';
+  ctx.fillRect(x - s, y - s * 0.4, s * 2, s * 0.8);
+  // Solar panels (left)
+  ctx.fillStyle = '#4488CC';
+  ctx.fillRect(x - s * 2.5, y - s * 0.6, s * 1.2, s * 1.2);
+  ctx.strokeStyle = '#336699';
+  ctx.lineWidth = 0.5;
+  ctx.strokeRect(x - s * 2.5, y - s * 0.6, s * 1.2, s * 1.2);
+  // Panel grid
+  for (let i = 1; i < 3; i++) {
+    ctx.beginPath();
+    ctx.moveTo(x - s * 2.5 + i * s * 0.4, y - s * 0.6);
+    ctx.lineTo(x - s * 2.5 + i * s * 0.4, y + s * 0.6);
+    ctx.stroke();
+  }
+  // Solar panels (right)
+  ctx.fillStyle = '#4488CC';
+  ctx.fillRect(x + s * 1.3, y - s * 0.6, s * 1.2, s * 1.2);
+  ctx.strokeStyle = '#336699';
+  ctx.strokeRect(x + s * 1.3, y - s * 0.6, s * 1.2, s * 1.2);
+  for (let i = 1; i < 3; i++) {
+    ctx.beginPath();
+    ctx.moveTo(x + s * 1.3 + i * s * 0.4, y - s * 0.6);
+    ctx.lineTo(x + s * 1.3 + i * s * 0.4, y + s * 0.6);
+    ctx.stroke();
+  }
+  // Connecting struts
+  ctx.fillStyle = '#999';
+  ctx.fillRect(x - s, y - 1, s * 0.8, 2);
+  ctx.fillRect(x + s * 0.2, y - 1, s * 0.8, 2);
+  // Windows
+  ctx.fillStyle = '#FFFF88';
+  for (let i = 0; i < 3; i++) {
+    ctx.beginPath();
+    ctx.arc(x - s * 0.5 + i * s * 0.5, y, 1.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
 // DRAW — Game Elements
 // ============================================================
 function drawGround() {
