@@ -2405,9 +2405,9 @@ function drawGameOver() {
   const apiResult = window._lastApiResult;
   const tgStatus = API.isTelegram() ? '✅ TG' : '❌ no TG';
   const submitStatus = apiResult ? `✅ Rank #${apiResult.rank}` : (API.isTelegram() ? '⏳ sending...' : '');
-  ctx.fillStyle = 'rgba(255,255,255,0.35)';
-  ctx.font = `${su * 0.4}px ${th.fontFamily}`;
-  ctx.fillText(`${tgStatus} ${submitStatus}`, W/2, cardY + su * 8.8);
+  ctx.fillStyle = '#FFD700';
+  ctx.font = `bold ${su * 0.55}px ${th.fontFamily}`;
+  ctx.fillText(`${tgStatus} ${submitStatus}`, W/2, cardY + su * 8.6);
 
   const btnW = cardW * 0.72, btnH = su * 1.8;
   drawButton(W/2, cardY + su * 9.5, btnW, btnH, '▶  RETRY', 'primary');
