@@ -1,9 +1,10 @@
+from __future__ import annotations
 """Database setup and schema initialization."""
 
 import os
 import sqlite3
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 
 DB_PATH = os.environ.get("DB_PATH", os.path.join(os.path.dirname(__file__), "data", "towerstack.db"))
 
