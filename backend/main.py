@@ -38,6 +38,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.middleware("http")
+async def allow_null_origin(request: Request, call_next):
+    """Allow 'null' origin from Telegram iOS WebApp."""
+    response = await call_next(request)
+    if request.headers.get("origin") == "null":
+        response.headers["Access-Control-Allow-Origin"] = "null"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST"
+        response.headers["Access-Control-Allow-Headers"] = "*"
+    return response
+
 # Simple in-memory rate limiter: {telegram_id: last_submit_timestamp}
 _rate_limits: dict[int, float] = {}
 

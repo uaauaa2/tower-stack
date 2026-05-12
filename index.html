@@ -31,7 +31,7 @@
 </head>
 <body>
 <canvas id="game"></canvas>
-<script src="https://telegram.org/js/telegram-web-app.js" async></script>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script>
 // ============================================================
 // CONFIG
@@ -817,7 +817,7 @@ canvas.addEventListener('touchstart', (e) => {
     if (handleButtonHit(t.clientX, t.clientY)) return;
     return;
   }
-  if (state === STATES.MENU || state === STATES.GAME_OVER) {
+  if (state === STATES.MENU || state === STATES.GAME_OVER || state === STATES.LEADERBOARD || state === STATES.STATS) {
     if (handleButtonHit(t.clientX, t.clientY)) return;
   }
   handleAction();
@@ -842,7 +842,7 @@ canvas.addEventListener('mousedown', (e) => {
     if (handleButtonHit(e.clientX, e.clientY)) return;
     return;
   }
-  if (state === STATES.MENU || state === STATES.GAME_OVER) {
+  if (state === STATES.MENU || state === STATES.GAME_OVER || state === STATES.LEADERBOARD || state === STATES.STATS) {
     if (handleButtonHit(e.clientX, e.clientY)) return;
   }
   handleAction();
