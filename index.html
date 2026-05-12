@@ -102,6 +102,54 @@ const CFG = {
 };
 
 // ============================================================
+// THEMES
+// ============================================================
+const THEMES = {
+  classic: {
+    id: 'classic', name: '✨ Classic',
+    blockColors: ['#FF6B6B','#FFD93D','#6BCB77','#4D96FF','#C084FC','#FFA07A'],
+    craneColor: '#546E7A', cableColor: '#37474F', hookColor: '#FFD93D',
+    hudColor: '#FFFFFF', hudComboColor: '#FFD700',
+    fontFamily: "'Fredoka One','Segoe UI',system-ui,sans-serif",
+    btnPrimary: '#4D96FF', btnSecondary: '#FF6B6B',
+    menuBgTop: '#4FC3F7', menuBgBot: '#E1F5FE', menuTextColor: '#FFFFFF',
+    blockStyle: 'classic', bgStyle: 'classic',
+  },
+  cyberpunk: {
+    id: 'cyberpunk', name: '⚡ Cyberpunk',
+    blockColors: ['#00FFFF','#FF00FF','#FFFF00','#FF4444','#44FF88','#FF8800'],
+    craneColor: '#0A0020', cableColor: '#00FFFF', hookColor: '#FF00FF',
+    hudColor: '#00FFFF', hudComboColor: '#FF00FF',
+    fontFamily: "'Courier New',Courier,monospace",
+    btnPrimary: '#00FFFF', btnSecondary: '#FF00FF',
+    menuBgTop: '#050010', menuBgBot: '#0A0025', menuTextColor: '#00FFFF',
+    blockStyle: 'cyberpunk', bgStyle: 'cyberpunk',
+  },
+  ascii: {
+    id: 'ascii', name: '▓ ASCII',
+    blockColors: ['#00FF41','#00CC33','#00FF88','#33FF00','#88FF44','#00FFAA'],
+    craneColor: '#003300', cableColor: '#00FF41', hookColor: '#00FF41',
+    hudColor: '#00FF41', hudComboColor: '#88FF44',
+    fontFamily: "'Courier New',Courier,monospace",
+    btnPrimary: '#003300', btnSecondary: '#001a00',
+    menuBgTop: '#000000', menuBgBot: '#050f05', menuTextColor: '#00FF41',
+    blockStyle: 'ascii', bgStyle: 'ascii',
+  },
+  pixel: {
+    id: 'pixel', name: '🎮 Pixel',
+    blockColors: ['#FF0044','#FF8800','#FFFF00','#00BB00','#2244FF','#AA00BB'],
+    craneColor: '#443344', cableColor: '#888899', hookColor: '#FFFF00',
+    hudColor: '#FFFFFF', hudComboColor: '#FFFF00',
+    fontFamily: "'Courier New',Courier,monospace",
+    btnPrimary: '#2244FF', btnSecondary: '#AA0000',
+    menuBgTop: '#5C94FC', menuBgBot: '#5C94FC', menuTextColor: '#FFFFFF',
+    blockStyle: 'pixel', bgStyle: 'pixel',
+  },
+};
+let activeTheme = 'classic';
+function theme() { return THEMES[activeTheme] || THEMES.classic; }
+
+// ============================================================
 // UTILS
 // ============================================================
 function lerp(a, b, t) { return a + (b - a) * t; }
@@ -148,6 +196,11 @@ const Storage = {
     if (score > data.highScore) data.highScore = score;
     this.save(data);
     return data;
+  },
+  saveTheme(themeId) {
+    const data = this.load();
+    data.theme = themeId;
+    this.save(data);
   }
 };
 
@@ -244,7 +297,7 @@ function currentMaxAngle() {
   const angleDeg = lerp(startDeg, maxDeg, st);
   return Math.PI * angleDeg / 180;
 }
-function blockColor(i) { return CFG.blockColors[i % CFG.blockColors.length]; }
+function blockColor(i) { const c = theme().blockColors; return c[i % c.length]; }
 function getTowerTop() { return tower.length > 0 ? tower[tower.length - 1] : null; }
 function floorCount() { return Math.max(0, tower.length - 1); }
 
@@ -796,6 +849,106 @@ function update(dt) {
 // DRAW — Background Elements
 // ============================================================
 
+// ============================================================
+// DRAW — Block Styles (theme dispatch)
+// ============================================================
+function drawBlockTheme(bx, by, color, isPerfect) {
+  switch (theme().blockStyle) {
+    case 'cyberpunk': drawBlockCyberpunk(bx, by, color, isPerfect); break;
+    case 'ascii':     drawBlockAscii(bx, by, color, isPerfect); break;
+    case 'pixel':     drawBlockPixel(bx, by, color, isPerfect); break;
+    default:          drawBlockClassic(bx, by, color, isPerfect); break;
+  }
+}
+
+function drawBlockClassic(bx, by, color, isPerfect) {
+  const grad = ctx.createLinearGradient(bx, by, bx, by + BS);
+  grad.addColorStop(0, shadeColor(color, 28));
+  grad.addColorStop(1, shadeColor(color, -18));
+  ctx.fillStyle = grad;
+  ctx.fillRect(bx, by, BS, BS);
+  // Side highlight
+  const sG = ctx.createLinearGradient(bx, by, bx + 7, by);
+  sG.addColorStop(0, 'rgba(255,255,255,0.32)');
+  sG.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = sG;
+  ctx.fillRect(bx, by, 7, BS);
+  // Bottom shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.22)';
+  ctx.fillRect(bx, by + BS - 4, BS, 4);
+  // Top highlight
+  ctx.fillStyle = 'rgba(255,255,255,0.32)';
+  ctx.fillRect(bx, by, BS, 2);
+  if (isPerfect) { ctx.fillStyle = 'rgba(255,215,0,0.18)'; ctx.fillRect(bx, by, BS, BS); }
+}
+
+function drawBlockCyberpunk(bx, by, color, isPerfect) {
+  // Dark interior
+  ctx.fillStyle = '#00000D';
+  ctx.fillRect(bx, by, BS, BS);
+  // Neon glow border
+  ctx.shadowColor = color;
+  ctx.shadowBlur = isPerfect ? 20 : 10;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(bx + 1.5, by + 1.5, BS - 3, BS - 3);
+  ctx.shadowBlur = 0;
+  // Subtle color fill
+  ctx.fillStyle = color + '1A';
+  ctx.fillRect(bx + 2, by + 2, BS - 4, BS - 4);
+  // Horizontal scan lines inside
+  ctx.fillStyle = color + '28';
+  for (let sy = by + 7; sy < by + BS - 3; sy += 7) {
+    ctx.fillRect(bx + 3, sy, BS - 6, 1);
+  }
+  if (isPerfect) { ctx.fillStyle = color + '3A'; ctx.fillRect(bx + 2, by + 2, BS - 4, BS - 4); }
+}
+
+function drawBlockAscii(bx, by, color, isPerfect) {
+  ctx.fillStyle = '#001100';
+  ctx.fillRect(bx, by, BS, BS);
+  ctx.strokeStyle = isPerfect ? '#88FF44' : color;
+  ctx.lineWidth = 1;
+  ctx.strokeRect(bx + 0.5, by + 0.5, BS - 1, BS - 1);
+  // Inner second border (ASCII double-frame feel)
+  ctx.strokeStyle = (isPerfect ? '#88FF44' : color) + '55';
+  ctx.strokeRect(bx + 3.5, by + 3.5, BS - 7, BS - 7);
+  // Fill pattern
+  ctx.fillStyle = (isPerfect ? '#88FF44' : color) + '22';
+  ctx.fillRect(bx + 4, by + 4, BS - 8, BS - 8);
+}
+
+function drawBlockPixel(bx, by, color, isPerfect) {
+  const px = Math.max(1, Math.floor(BS / 8));
+  // Base fill
+  ctx.fillStyle = color;
+  ctx.fillRect(bx, by, BS, BS);
+  // Dither (alternating darker pixels)
+  ctx.fillStyle = shadeColor(color, -18);
+  for (let r = 1; r < 7; r++) {
+    for (let c = 1; c < 7; c++) {
+      if ((r + c) % 2 === 1) ctx.fillRect(bx + c * px, by + r * px, px, px);
+    }
+  }
+  // Top-left highlight
+  ctx.fillStyle = shadeColor(color, 42);
+  ctx.fillRect(bx, by, BS, px);
+  ctx.fillRect(bx, by, px, BS);
+  // Bottom-right shadow
+  ctx.fillStyle = shadeColor(color, -42);
+  ctx.fillRect(bx, by + BS - px, BS, px);
+  ctx.fillRect(bx + BS - px, by, px, BS);
+  // Black border
+  ctx.strokeStyle = '#000000';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(bx + 0.5, by + 0.5, BS - 1, BS - 1);
+  if (isPerfect) {
+    ctx.strokeStyle = '#FFFF00';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(bx + 1.5, by + 1.5, BS - 3, BS - 3);
+  }
+}
+
 // Floating background objects
 let bgObjects = [];
 function initBgObjects() {
@@ -906,7 +1059,124 @@ function initBgObjects() {
 }
 initBgObjects();
 
+// ============================================================
+// MATRIX RAIN (ASCII theme background)
+// ============================================================
+let matrixColumns = [];
+function initMatrixRain() {
+  const colW = 14;
+  const numCols = Math.ceil(480 / colW);
+  matrixColumns = [];
+  const chars = '0123456789ABCDEF<>[]{}|/\\!@#$%^&*';
+  for (let i = 0; i < numCols; i++) {
+    const len = 5 + Math.floor(Math.random() * 15);
+    const col = { x: i * colW + colW/2, speed: 35 + Math.random() * 55, len, chars: [] };
+    for (let j = 0; j < len + 2; j++) col.chars.push(chars[Math.floor(Math.random() * chars.length)]);
+    matrixColumns.push(col);
+  }
+}
+initMatrixRain();
+
+// Load saved theme
+{ const _d = Storage.load(); activeTheme = THEMES[_d.theme] ? _d.theme : 'classic'; }
+
 function drawBackground() {
+  switch (theme().bgStyle) {
+    case 'cyberpunk': drawBackgroundCyberpunk(); break;
+    case 'ascii':     drawBackgroundAscii(); break;
+    case 'pixel':     drawBackgroundPixel(); break;
+    default:          drawBackgroundClassic(); break;
+  }
+}
+
+function drawBackgroundCyberpunk() {
+  const floors = floorCount();
+  const dark = Math.min(floors / 60, 1);
+  const bg = `rgb(${Math.round(lerp(5,2,dark))},${Math.round(lerp(0,0,dark))},${Math.round(lerp(20,8,dark))})`;
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+  // Grid
+  ctx.strokeStyle = 'rgba(0,255,255,0.05)';
+  ctx.lineWidth = 1;
+  for (let x = 0; x < W; x += 40) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+  for (let y = 0; y < H; y += 40) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+  // Scanlines
+  ctx.fillStyle = 'rgba(0,0,0,0.07)';
+  for (let y = 0; y < H; y += 2) ctx.fillRect(0, y, W, 1);
+  // Neon horizon glow
+  if (floors < 15) {
+    const grd = ctx.createLinearGradient(0, H * 0.7, 0, H);
+    grd.addColorStop(0, 'rgba(0,255,255,0)');
+    grd.addColorStop(1, 'rgba(0,255,255,0.08)');
+    ctx.fillStyle = grd;
+    ctx.fillRect(0, H * 0.7, W, H * 0.3);
+  }
+}
+
+function drawBackgroundAscii() {
+  ctx.fillStyle = '#000000';
+  ctx.fillRect(0, 0, W, H);
+  // Scanlines
+  ctx.fillStyle = 'rgba(0,20,0,0.4)';
+  for (let y = 0; y < H; y += 2) ctx.fillRect(0, y, W, 1);
+  // Matrix rain
+  const t = Date.now() / 1000;
+  ctx.font = '13px Courier New,monospace';
+  ctx.textAlign = 'center';
+  for (const col of matrixColumns) {
+    const baseY = ((col.y + t * col.speed) % (H + col.len * 14));
+    for (let i = 0; i < col.len; i++) {
+      const cy = baseY - i * 14;
+      if (cy < -14 || cy > H + 14) continue;
+      const brightness = 1 - i / col.len;
+      const alpha = brightness * 0.7;
+      const ci = (Math.floor(t * 6 + i * 2.3) % col.chars.length + col.chars.length) % col.chars.length;
+      ctx.fillStyle = i === 0
+        ? `rgba(180,255,180,${clamp(alpha + 0.3, 0, 1)})`
+        : `rgba(0,${Math.round(120 + brightness * 80)},0,${clamp(alpha,0,1)})`;
+      ctx.fillText(col.chars[ci], col.x, cy);
+    }
+  }
+  ctx.textAlign = 'left';
+}
+
+function drawBackgroundPixel() {
+  const floors = floorCount();
+  const zones = [
+    { maxFloor: 15, sky: '#5C94FC' },
+    { maxFloor: 30, sky: '#3A6EC0' },
+    { maxFloor: 50, sky: '#1A2A88' },
+    { maxFloor: 70, sky: '#0A0A50' },
+    { maxFloor: Infinity, sky: '#000010' },
+  ];
+  let sky = '#5C94FC';
+  for (const z of zones) { if (floors < z.maxFloor) { sky = z.sky; break; } }
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, W, H);
+  // Chunky pixel clouds (low altitude)
+  if (floors < 25) {
+    const t = Date.now() / 1000;
+    ctx.fillStyle = '#FFFFFF';
+    [30, 170, 310, 420].forEach((cx, i) => {
+      const x = Math.floor(((cx + t * 10 + i * 50) % (W + 100)) - 50);
+      const y = 40 + i * 28;
+      ctx.fillRect(x, y, 40, 12);
+      ctx.fillRect(x - 8, y + 4, 12, 8);
+      ctx.fillRect(x + 36, y + 4, 12, 8);
+      ctx.fillRect(x + 10, y - 8, 20, 8);
+    });
+  }
+  // Pixel stars (high altitude)
+  if (floors > 35) {
+    const starData = [50,150,250,350,90,190,290,390,70,170,270,370];
+    starData.forEach((sx, i) => {
+      ctx.fillStyle = i % 3 === 0 ? '#FFFFFF' : '#FFFF88';
+      ctx.fillRect(sx % W, (i * 43 + 20) % (H - 20), 4, 4);
+    });
+  }
+}
+
+function drawBackgroundClassic() {
   const floors = floorCount();
   const zi = getBgZoneIndex(floors);
   const zone = CFG.bgZones[zi];
@@ -1108,16 +1378,38 @@ function drawSatellite(obj, t) {
 // ============================================================
 function drawGround() {
   const floors = floorCount();
-  if (floors > 10) return; // ground not visible above zone 0
-
-  // Ground only visible in low zone
+  if (floors > 10) return;
   const groundScreenY = getGroundScreenY();
   if (groundScreenY > H) return;
-
-  ctx.fillStyle = '#8B7355';
-  ctx.fillRect(0, groundScreenY, W, H - groundScreenY + 10);
-  ctx.fillStyle = '#6BCB77';
-  ctx.fillRect(0, groundScreenY, W, 5);
+  const th = theme();
+  if (th.id === 'cyberpunk') {
+    ctx.fillStyle = '#0A0025';
+    ctx.fillRect(0, groundScreenY, W, H - groundScreenY + 10);
+    ctx.shadowColor = '#00FFFF'; ctx.shadowBlur = 6;
+    ctx.strokeStyle = '#00FFFF'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(0, groundScreenY); ctx.lineTo(W, groundScreenY); ctx.stroke();
+    ctx.shadowBlur = 0;
+  } else if (th.id === 'ascii') {
+    ctx.fillStyle = '#001100';
+    ctx.fillRect(0, groundScreenY, W, H - groundScreenY + 10);
+    ctx.fillStyle = '#00FF41';
+    ctx.font = '10px Courier New,monospace';
+    ctx.textAlign = 'left';
+    for (let x = 0; x < W; x += 7) ctx.fillText('▓', x, groundScreenY + 9);
+    ctx.textAlign = 'left';
+  } else if (th.id === 'pixel') {
+    ctx.fillStyle = '#5B3A1A';
+    ctx.fillRect(0, groundScreenY, W, H - groundScreenY + 10);
+    ctx.fillStyle = '#00BB00';
+    ctx.fillRect(0, groundScreenY, W, 8);
+    ctx.fillStyle = '#888888';
+    for (let x = 10; x < W; x += 64) ctx.fillRect(x, groundScreenY + 8, 16, 8);
+  } else {
+    ctx.fillStyle = '#8B7355';
+    ctx.fillRect(0, groundScreenY, W, H - groundScreenY + 10);
+    ctx.fillStyle = '#6BCB77';
+    ctx.fillRect(0, groundScreenY, W, 5);
+  }
 }
 
 function getGroundScreenY() {
@@ -1150,19 +1442,7 @@ function drawTower() {
   for (const block of tower) {
     const bx = block.x;
     const by = block.y - camera.y;
-    ctx.fillStyle = block.color;
-    ctx.fillRect(bx, by, BS, BS);
-    // Bottom shadow
-    ctx.fillStyle = 'rgba(0,0,0,0.15)';
-    ctx.fillRect(bx, by + BS - 3, BS, 3);
-    // Top highlight
-    ctx.fillStyle = 'rgba(255,255,255,0.25)';
-    ctx.fillRect(bx, by, BS, 2);
-    // Perfect glow
-    if (block.perfect && !block.isBase) {
-      ctx.fillStyle = 'rgba(255,215,0,0.12)';
-      ctx.fillRect(bx, by, BS, BS);
-    }
+    drawBlockTheme(bx, by, block.color, block.perfect && !block.isBase);
   }
 
   ctx.restore();
@@ -1172,14 +1452,16 @@ function drawCrane() {
   if (state !== STATES.PLAYING) return;
 
   const { angle, blockX, blockY } = getSwingState();
+  const th = theme();
+  const isCyber = th.id === 'cyberpunk';
 
-  // Crane arm (may be off-screen, that's OK)
+  // Crane arm
   const armScreenY = crane.pivotY - 10 - camera.y + shake.y;
-  ctx.fillStyle = CFG.craneColor;
+  if (isCyber) { ctx.shadowColor = th.hudColor; ctx.shadowBlur = 6; }
+  ctx.fillStyle = th.craneColor;
   ctx.fillRect(0, armScreenY - 5, W, 10);
-
-  // Crane arm detail (vertical support at right)
   ctx.fillRect(W - 20, armScreenY - 30, 12, 35);
+  ctx.shadowBlur = 0;
 
   // Cable with stretch
   const stretch = crane.stretch || 0;
@@ -1187,42 +1469,31 @@ function drawCrane() {
   const hookX = crane.pivotX + Math.sin(angle) * cl;
   const hookY = crane.pivotY + Math.cos(angle) * cl;
 
-  // Draw cable
-  ctx.strokeStyle = CFG.cableColor;
+  if (isCyber) { ctx.shadowColor = th.cableColor; ctx.shadowBlur = 5; }
+  ctx.strokeStyle = th.cableColor;
   ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.moveTo(crane.pivotX + shake.x, crane.pivotY - camera.y + shake.y);
   ctx.lineTo(hookX + shake.x, hookY - camera.y + shake.y);
   ctx.stroke();
+  ctx.shadowBlur = 0;
 
   // Hook
-  ctx.fillStyle = CFG.hookColor;
+  if (isCyber) { ctx.shadowColor = th.hookColor; ctx.shadowBlur = 8; }
+  ctx.fillStyle = th.hookColor;
   ctx.beginPath();
   ctx.arc(hookX + shake.x, hookY - camera.y + shake.y, 4, 0, Math.PI * 2);
   ctx.fill();
+  ctx.shadowBlur = 0;
 
-  // Block — rigidly attached to cable, tilts with it
+  // Block on crane (tilted with cable)
   const color = blockColor(tower.length);
   ctx.globalAlpha = 0.95;
-  ctx.fillStyle = color;
-
-  const bx = blockX + shake.x;
-  const by = blockY - camera.y + shake.y;
-
-  // Rotate block around its top-center (hook attachment point)
   ctx.save();
   ctx.translate(hookX + shake.x, hookY - camera.y + shake.y);
-  ctx.rotate(-angle); // tilt with cable (negated for canvas coords)
-  // Block hangs below hook, centered horizontally
-  ctx.fillRect(-BS / 2, 0, BS, BS);
-  // Bottom shadow
-  ctx.fillStyle = 'rgba(0,0,0,0.12)';
-  ctx.fillRect(-BS / 2, BS - 3, BS, 3);
-  // Top highlight
-  ctx.fillStyle = 'rgba(255,255,255,0.2)';
-  ctx.fillRect(-BS / 2, 0, BS, 2);
+  ctx.rotate(-angle);
+  drawBlockTheme(-BS / 2, 0, color, false);
   ctx.restore();
-
   ctx.globalAlpha = 1;
 }
 
@@ -1260,16 +1531,7 @@ function drawFallingBlock() {
   // Rotate block around its center
   ctx.translate(bx, by);
   ctx.rotate(rot);
-
-  ctx.fillStyle = fallingBlock.color;
-  ctx.fillRect(-BS / 2, -BS / 2, BS, BS);
-  // Bottom shadow
-  ctx.fillStyle = 'rgba(0,0,0,0.15)';
-  ctx.fillRect(-BS / 2, BS / 2 - 3, BS, 3);
-  // Top highlight
-  ctx.fillStyle = 'rgba(255,255,255,0.2)';
-  ctx.fillRect(-BS / 2, -BS / 2, BS, 2);
-
+  drawBlockTheme(-BS / 2, -BS / 2, fallingBlock.color, false);
   ctx.restore();
 }
 
@@ -1280,14 +1542,7 @@ function drawDebris() {
     const dy = d.y + BS/2 - camera.y + shake.y;
     ctx.translate(dx, dy);
     ctx.rotate(d.rot);
-    ctx.fillStyle = d.color;
-    ctx.fillRect(-BS/2, -BS/2, BS, BS);
-    // Bottom shadow
-    ctx.fillStyle = 'rgba(0,0,0,0.15)';
-    ctx.fillRect(-BS/2, BS/2 - 3, BS, 3);
-    // Top highlight
-    ctx.fillStyle = 'rgba(255,255,255,0.2)';
-    ctx.fillRect(-BS/2, -BS/2, BS, 2);
+    drawBlockTheme(-BS/2, -BS/2, d.color, false);
     ctx.restore();
   }
 }
@@ -1297,14 +1552,14 @@ function drawParticles() {
 }
 
 function drawFloatTexts() {
+  const th = theme();
   for (const ft of floatTexts) {
     const alpha = clamp(ft.life / ft.maxLife, 0, 1);
     ctx.globalAlpha = alpha;
     ctx.fillStyle = ft.color;
-    ctx.font = `bold ${ft.size}px 'Fredoka One', 'Segoe UI', system-ui, sans-serif`;
+    ctx.font = `bold ${ft.size}px ${th.fontFamily}`;
     ctx.textAlign = 'center';
-    ctx.shadowColor = 'rgba(0,0,0,0.4)';
-    ctx.shadowBlur = 3;
+    if (th.id === 'cyberpunk') { ctx.shadowColor = ft.color; ctx.shadowBlur = 8; }
     ctx.fillText(ft.text, ft.x + shake.x, ft.y - camera.y + shake.y);
     ctx.shadowBlur = 0;
     ctx.globalAlpha = 1;
@@ -1313,43 +1568,48 @@ function drawFloatTexts() {
 }
 
 function drawHUD() {
-  ctx.shadowColor = 'rgba(0,0,0,0.5)';
-  ctx.shadowBlur = 4;
+  const th = theme();
+  const isCyber = th.id === 'cyberpunk';
+  const isAscii = th.id === 'ascii';
+
+  if (isCyber) { ctx.shadowColor = th.hudColor; ctx.shadowBlur = 8; }
 
   // Score
-  ctx.fillStyle = '#FFFFFF';
-  ctx.font = "bold 26px 'Fredoka One', 'Segoe UI', system-ui, sans-serif";
+  ctx.fillStyle = th.hudColor;
+  ctx.font = `bold 26px ${th.fontFamily}`;
   ctx.textAlign = 'left';
   ctx.fillText(`${score}`, 16, 36);
 
   // Floors
-  ctx.font = "14px 'Nunito', 'Segoe UI', system-ui, sans-serif";
-  ctx.fillStyle = 'rgba(255,255,255,0.7)';
+  ctx.font = `14px ${th.fontFamily}`;
+  ctx.fillStyle = isCyber ? th.hudColor + 'BB' : isAscii ? '#00CC33' : 'rgba(255,255,255,0.7)';
   ctx.fillText(`${floorCount()} floors`, 16, 54);
+  ctx.shadowBlur = 0;
 
   // Lives (top center)
   ctx.textAlign = 'center';
-  ctx.font = "20px sans-serif";
+  ctx.font = '20px sans-serif';
   let livesStr = '';
-  for (let i = 0; i < CFG.maxLives; i++) {
-    livesStr += i < lives ? '❤️' : '🖤';
-  }
+  for (let i = 0; i < CFG.maxLives; i++) livesStr += i < lives ? '❤️' : '🖤';
+  ctx.fillStyle = th.hudColor;
   ctx.fillText(livesStr, W / 2, 36);
 
   // Combo
   if (combo > 0) {
     ctx.textAlign = 'right';
-    ctx.font = `bold ${18 + combo}px 'Fredoka One', 'Segoe UI', system-ui, sans-serif`;
-    ctx.fillStyle = '#FFD700';
+    ctx.font = `bold ${18 + combo}px ${th.fontFamily}`;
+    ctx.fillStyle = th.hudComboColor;
+    if (isCyber) { ctx.shadowColor = th.hudComboColor; ctx.shadowBlur = 12; }
     ctx.fillText(`×${combo + 1}`, W - 16, 36);
+    ctx.shadowBlur = 0;
   }
 
   // Hint
   if (state === STATES.PLAYING && hintOpacity > 0) {
     ctx.globalAlpha = hintOpacity;
     ctx.textAlign = 'center';
-    ctx.fillStyle = 'rgba(255,255,255,0.5)';
-    ctx.font = "18px 'Fredoka One', 'Segoe UI', system-ui, sans-serif";
+    ctx.fillStyle = isAscii ? '#00FF41' : isCyber ? th.hudColor + 'AA' : 'rgba(255,255,255,0.5)';
+    ctx.font = `18px ${th.fontFamily}`;
     ctx.fillText('TAP TO DROP', W/2, H * 0.5);
     ctx.globalAlpha = 1;
   }
@@ -1362,45 +1622,62 @@ function drawHUD() {
 // DRAW — Screens
 // ============================================================
 function drawMenu() {
-  // Sky bg
-  const grad = ctx.createLinearGradient(0, 0, 0, H);
-  grad.addColorStop(0, '#4FC3F7');
-  grad.addColorStop(1, '#E1F5FE');
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, W, H);
-
-  // Clouds
+  const th = theme();
   const t = Date.now() / 1000;
-  ctx.fillStyle = 'rgba(255,255,255,0.4)';
-  for (let i = 0; i < 5; i++) {
-    const cx = ((i * 120 + t * 8 + i * 37) % (W + 100)) - 50;
-    const cy = 60 + i * 40 + Math.sin(t * 0.3 + i) * 10;
-    ctx.beginPath();
-    ctx.arc(cx, cy, 20, 0, Math.PI*2);
-    ctx.arc(cx + 18, cy - 4, 15, 0, Math.PI*2);
-    ctx.arc(cx - 14, cy + 3, 12, 0, Math.PI*2);
-    ctx.fill();
-  }
-
   const bounce = Math.sin(menuAnim * 3) * 3;
   const titleY = H * 0.22 + bounce;
 
-  ctx.textAlign = 'center';
-  ctx.font = "48px sans-serif";
-  ctx.fillText('🏗️', W/2, titleY - 40);
+  // --- Background ---
+  if (th.id === 'cyberpunk') {
+    ctx.fillStyle = '#050010'; ctx.fillRect(0, 0, W, H);
+    ctx.strokeStyle = 'rgba(0,255,255,0.05)'; ctx.lineWidth = 1;
+    for (let x = 0; x < W; x += 40) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+    for (let y = 0; y < H; y += 40) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+    ctx.fillStyle = 'rgba(0,0,0,0.07)';
+    for (let y = 0; y < H; y += 2) ctx.fillRect(0, y, W, 1);
+  } else if (th.id === 'ascii') {
+    drawBackgroundAscii();
+  } else if (th.id === 'pixel') {
+    ctx.fillStyle = '#5C94FC'; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#FFFFFF';
+    [30,160,290,400].forEach((cx,i) => {
+      const x = Math.floor(((cx + t*10+i*50)%(W+100))-50);
+      const y = 40 + i*30;
+      ctx.fillRect(x,y,40,12); ctx.fillRect(x-8,y+4,12,8);
+      ctx.fillRect(x+36,y+4,12,8); ctx.fillRect(x+10,y-8,20,8);
+    });
+    ctx.fillStyle = '#5B3A1A'; ctx.fillRect(0, H*0.82, W, H*0.18);
+    ctx.fillStyle = '#00BB00'; ctx.fillRect(0, H*0.82, W, 8);
+  } else {
+    // Classic
+    const grad = ctx.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0, '#4FC3F7'); grad.addColorStop(1, '#E1F5FE');
+    ctx.fillStyle = grad; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    for (let i = 0; i < 5; i++) {
+      const cx = ((i*120 + t*8 + i*37) % (W+100)) - 50;
+      const cy = 60 + i*40 + Math.sin(t*0.3+i)*10;
+      ctx.beginPath(); ctx.arc(cx,cy,20,0,Math.PI*2);
+      ctx.arc(cx+18,cy-4,15,0,Math.PI*2); ctx.arc(cx-14,cy+3,12,0,Math.PI*2); ctx.fill();
+    }
+    ctx.fillStyle = '#8B7355'; ctx.fillRect(0, H*0.82, W, H*0.18);
+    ctx.fillStyle = '#6BCB77'; ctx.fillRect(0, H*0.82, W, 5);
+  }
 
-  ctx.fillStyle = '#FFFFFF';
-  ctx.shadowColor = 'rgba(0,0,0,0.3)';
-  ctx.shadowBlur = 6;
-  ctx.font = "bold 40px 'Fredoka One', 'Segoe UI', system-ui, sans-serif";
+  // --- Title ---
+  ctx.textAlign = 'center';
+  if (th.id === 'classic') { ctx.font = '48px sans-serif'; ctx.fillText('🏗️', W/2, titleY - 40); }
+  if (th.id === 'cyberpunk') { ctx.shadowColor = th.menuTextColor; ctx.shadowBlur = 22; }
+  ctx.fillStyle = th.menuTextColor;
+  ctx.font = `bold 40px ${th.fontFamily}`;
   ctx.fillText('TOWER', W/2, titleY);
   ctx.fillText('STACK', W/2, titleY + 46);
   ctx.shadowBlur = 0;
 
   const data = Storage.load();
   if (data.highScore > 0) {
-    ctx.fillStyle = 'rgba(255,255,255,0.6)';
-    ctx.font = "16px 'Nunito', 'Segoe UI', system-ui, sans-serif";
+    ctx.fillStyle = th.id === 'cyberpunk' ? th.hudComboColor : th.id === 'ascii' ? '#00CC33' : 'rgba(255,255,255,0.6)';
+    ctx.font = `16px ${th.fontFamily}`;
     ctx.fillText(`Best: ${data.highScore}`, W/2, titleY + 80);
   }
 
@@ -1410,26 +1687,17 @@ function drawMenu() {
   addButton('PLAY', W/2, H * 0.56, btnW, btnH, () => startGame(), 'primary');
 
   drawButton(W/2, H * 0.66, btnW, btnH, '🏙  MY CITY', 'secondary');
-  addButton('CITY', W/2, H * 0.66, btnW, btnH, () => {
-    state = STATES.CITY_VIEW; cityScrollX = 0;
-  }, 'secondary');
+  addButton('CITY', W/2, H * 0.66, btnW, btnH, () => { state = STATES.CITY_VIEW; cityScrollX = 0; }, 'secondary');
 
   drawButton(W/2, H * 0.76, btnW, btnH, '⚙  SETTINGS', 'secondary');
-  addButton('SETTINGS', W/2, H * 0.76, btnW, btnH, () => {
-    state = STATES.SETTINGS; initSettingsForm();
-  }, 'secondary');
-
-  // Ground on menu
-  ctx.fillStyle = '#8B7355';
-  ctx.fillRect(0, H * 0.82, W, H * 0.18);
-  ctx.fillStyle = '#6BCB77';
-  ctx.fillRect(0, H * 0.82, W, 5);
+  addButton('SETTINGS', W/2, H * 0.76, btnW, btnH, () => { state = STATES.SETTINGS; initSettingsForm(); }, 'secondary');
 
   ctx.textAlign = 'left';
 }
 
 function drawGameOver() {
-  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  const th = theme();
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
   ctx.fillRect(0, 0, W, H);
 
   const cardW = 280, cardH = 340;
@@ -1439,156 +1707,208 @@ function drawGameOver() {
   ctx.save();
   ctx.translate(0, (1 - slideUp) * 100);
 
-  ctx.fillStyle = '#FFFFFF';
-  ctx.shadowColor = 'rgba(0,0,0,0.2)';
-  ctx.shadowBlur = 20;
-  roundRect(cardX, cardY, cardW, cardH, 16);
-  ctx.fill();
-  ctx.shadowBlur = 0;
+  // Card background
+  if (th.id === 'cyberpunk') {
+    ctx.fillStyle = '#050018';
+    ctx.shadowColor = '#00FFFF'; ctx.shadowBlur = 20;
+    roundRect(cardX, cardY, cardW, cardH, 8); ctx.fill();
+    ctx.strokeStyle = '#00FFFF'; ctx.lineWidth = 2; ctx.shadowBlur = 10;
+    roundRect(cardX, cardY, cardW, cardH, 8); ctx.stroke();
+    ctx.shadowBlur = 0;
+  } else if (th.id === 'ascii') {
+    ctx.fillStyle = '#000A00';
+    roundRect(cardX, cardY, cardW, cardH, 4); ctx.fill();
+    ctx.strokeStyle = '#00FF41'; ctx.lineWidth = 1;
+    roundRect(cardX, cardY, cardW, cardH, 4); ctx.stroke();
+  } else if (th.id === 'pixel') {
+    ctx.fillStyle = '#000088';
+    ctx.fillRect(cardX, cardY, cardW, cardH);
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(cardX, cardY, cardW, 4); ctx.fillRect(cardX, cardY+cardH-4, cardW, 4);
+    ctx.fillRect(cardX, cardY, 4, cardH); ctx.fillRect(cardX+cardW-4, cardY, 4, cardH);
+  } else {
+    ctx.fillStyle = '#FFFFFF';
+    ctx.shadowColor = 'rgba(0,0,0,0.2)'; ctx.shadowBlur = 20;
+    roundRect(cardX, cardY, cardW, cardH, 16); ctx.fill();
+    ctx.shadowBlur = 0;
+  }
 
   ctx.textAlign = 'center';
-  ctx.fillStyle = '#1A1A2E';
-  ctx.font = "bold 28px 'Fredoka One', 'Segoe UI', system-ui, sans-serif";
-  ctx.fillText('GAME OVER', W/2, cardY + 45);
+  const titleClr = th.id === 'ascii' ? '#00FF41' : th.id === 'cyberpunk' ? '#00FFFF' : th.id === 'pixel' ? '#FFFFFF' : '#1A1A2E';
+  const bodyClr  = th.id === 'ascii' ? '#00CC33' : th.id === 'cyberpunk' ? '#00CCCC' : th.id === 'pixel' ? '#AAAAFF' : '#546E7A';
 
-  ctx.font = "18px 'Nunito', 'Segoe UI', system-ui, sans-serif";
-  ctx.fillStyle = '#546E7A';
-  ctx.fillText(`🏗 Height: ${floorCount()}`, W/2, cardY + 90);
-  ctx.fillText(`⭐ Score: ${score}`, W/2, cardY + 120);
-  ctx.fillText(`🔥 Best combo: ×${bestCombo}`, W/2, cardY + 150);
+  if (th.id === 'cyberpunk') { ctx.shadowColor = '#00FFFF'; ctx.shadowBlur = 10; }
+  ctx.fillStyle = titleClr;
+  ctx.font = `bold 28px ${th.fontFamily}`;
+  ctx.fillText('GAME OVER', W/2, cardY + 45);
+  ctx.shadowBlur = 0;
+
+  ctx.font = `18px ${th.fontFamily}`;
+  ctx.fillStyle = bodyClr;
+  ctx.fillText(`Height: ${floorCount()}`, W/2, cardY + 90);
+  ctx.fillText(`Score: ${score}`, W/2, cardY + 120);
+  ctx.fillText(`Best combo: ×${bestCombo}`, W/2, cardY + 150);
 
   const data = Storage.load();
   if (data.highScore > 0) {
-    ctx.fillStyle = '#FFD700';
-    ctx.font = "bold 16px 'Nunito', 'Segoe UI', system-ui, sans-serif";
-    ctx.fillText(`🏆 High Score: ${data.highScore}`, W/2, cardY + 185);
+    ctx.fillStyle = th.hudComboColor;
+    ctx.font = `bold 16px ${th.fontFamily}`;
+    ctx.fillText(`High Score: ${data.highScore}`, W/2, cardY + 185);
   }
 
   const btnW = 200, btnH = 44;
-  const retryY = cardY + 230;
-  const cityBtnY = cardY + 290;
-
-  drawButton(W/2, retryY, btnW, btnH, '▶  RETRY', 'primary');
-  drawButton(W/2, cityBtnY, btnW, btnH, '🏙  MY CITY', 'secondary');
+  drawButton(W/2, cardY + 230, btnW, btnH, '▶  RETRY', 'primary');
+  drawButton(W/2, cardY + 290, btnW, btnH, '🏙  MY CITY', 'secondary');
 
   ctx.restore();
-
   buttons = [];
   addButton('RETRY', W/2, cardY + 230, btnW, btnH, () => startGame(), 'primary');
-  addButton('CITY', W/2, cardY + 290, btnW, btnH, () => {
-    state = STATES.CITY_VIEW; cityScrollX = 0;
-  }, 'secondary');
+  addButton('CITY', W/2, cardY + 290, btnW, btnH, () => { state = STATES.CITY_VIEW; cityScrollX = 0; }, 'secondary');
   ctx.textAlign = 'left';
 }
 
 function drawCityView() {
-  const grad = ctx.createLinearGradient(0, 0, 0, H);
-  grad.addColorStop(0, '#2C3E50');
-  grad.addColorStop(1, '#1A252F');
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, W, H);
+  const th = theme();
+
+  // Background
+  if (th.id === 'cyberpunk') {
+    ctx.fillStyle = '#050010'; ctx.fillRect(0,0,W,H);
+    ctx.strokeStyle='rgba(0,255,255,0.05)'; ctx.lineWidth=1;
+    for(let x=0;x<W;x+=40){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
+    for(let y=0;y<H;y+=40){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+  } else if (th.id === 'ascii') {
+    ctx.fillStyle = '#000000'; ctx.fillRect(0,0,W,H);
+    ctx.fillStyle='rgba(0,20,0,0.4)';
+    for(let y=0;y<H;y+=2) ctx.fillRect(0,y,W,1);
+  } else if (th.id === 'pixel') {
+    ctx.fillStyle = '#000010'; ctx.fillRect(0,0,W,H);
+  } else {
+    const grad = ctx.createLinearGradient(0,0,0,H);
+    grad.addColorStop(0,'#2C3E50'); grad.addColorStop(1,'#1A252F');
+    ctx.fillStyle=grad; ctx.fillRect(0,0,W,H);
+  }
 
   // Stars
   const t = Date.now() / 1000;
-  ctx.fillStyle = '#FFF';
   for (let i = 0; i < 40; i++) {
-    const sx = (i * 47 + Math.sin(i * 3.7) * 100) % W;
-    const sy = (i * 31 + Math.cos(i * 2.3) * 80) % (H * 0.6);
-    const twinkle = 0.3 + 0.7 * Math.sin(t * 2 + i);
-    ctx.globalAlpha = twinkle;
-    ctx.beginPath();
-    ctx.arc(sx, sy, 1 + (i % 3), 0, Math.PI * 2);
-    ctx.fill();
+    const sx=(i*47+Math.sin(i*3.7)*100)%W;
+    const sy=(i*31+Math.cos(i*2.3)*80)%(H*0.6);
+    const twinkle=0.3+0.7*Math.sin(t*2+i);
+    ctx.globalAlpha=twinkle;
+    ctx.fillStyle = th.id==='ascii' ? '#00FF41' : th.id==='cyberpunk' ? '#00FFFF' : '#FFF';
+    ctx.beginPath(); ctx.arc(sx,sy,1+(i%3),0,Math.PI*2); ctx.fill();
   }
-  ctx.globalAlpha = 1;
+  ctx.globalAlpha=1;
 
-  ctx.textAlign = 'center';
-  ctx.fillStyle = '#FFFFFF';
-  ctx.shadowColor = 'rgba(0,0,0,0.3)';
-  ctx.shadowBlur = 4;
-  ctx.font = "bold 28px 'Fredoka One', 'Segoe UI', system-ui, sans-serif";
-  ctx.fillText('MY CITY', W/2, 50);
-  ctx.shadowBlur = 0;
+  ctx.textAlign='center';
+  if (th.id==='cyberpunk'){ctx.shadowColor=th.hudColor;ctx.shadowBlur=14;}
+  ctx.fillStyle=th.menuTextColor;
+  ctx.font=`bold 28px ${th.fontFamily}`;
+  ctx.fillText('MY CITY',W/2,50);
+  ctx.shadowBlur=0;
 
   const data = Storage.load();
-  const towers = data.towers || [];
+  const towers = data.towers||[];
 
-  if (towers.length === 0) {
-    ctx.fillStyle = 'rgba(255,255,255,0.4)';
-    ctx.font = "18px 'Nunito', 'Segoe UI', system-ui, sans-serif";
-    ctx.fillText('Build your first tower!', W/2, H * 0.4);
-    ctx.strokeStyle = 'rgba(255,255,255,0.15)';
-    ctx.lineWidth = 2;
-    ctx.setLineDash([5, 5]);
-    ctx.strokeRect(W/2 - 25, H * 0.48, 50, 100);
-    ctx.setLineDash([]);
+  if (towers.length===0) {
+    ctx.fillStyle = th.id==='ascii'?'#00CC33':th.id==='cyberpunk'?th.hudColor+'AA':'rgba(255,255,255,0.4)';
+    ctx.font=`18px ${th.fontFamily}`;
+    ctx.fillText('Build your first tower!',W/2,H*0.4);
+    ctx.strokeStyle=th.id==='ascii'?'#00FF41':th.id==='cyberpunk'?'rgba(0,255,255,0.3)':'rgba(255,255,255,0.15)';
+    ctx.lineWidth=2; ctx.setLineDash([5,5]);
+    ctx.strokeRect(W/2-25,H*0.48,50,100); ctx.setLineDash([]);
   } else {
-    const sorted = [...towers].sort((a, b) => a.height - b.height);
-    const maxH = Math.max(...sorted.map(t => t.height));
-    const groundY = H * 0.82;
-    const towerSpacing = 70;
-    const startX = 40 - cityScrollX;
+    const sorted=[...towers].sort((a,b)=>a.height-b.height);
+    const maxH=Math.max(...sorted.map(tw=>tw.height));
+    const groundY=H*0.82;
+    const towerSpacing=70;
+    const startX=40-cityScrollX;
 
-    ctx.fillStyle = '#2A3A4A';
-    ctx.fillRect(0, groundY, W, H - groundY);
-    ctx.fillStyle = '#3A4A5A';
-    ctx.fillRect(0, groundY, W, 3);
+    ctx.fillStyle=th.id==='cyberpunk'?'#0A0025':th.id==='ascii'?'#001100':th.id==='pixel'?'#5B3A1A':'#2A3A4A';
+    ctx.fillRect(0,groundY,W,H-groundY);
+    ctx.fillStyle=th.id==='cyberpunk'?'#00FFFF':th.id==='ascii'?'#00FF41':th.id==='pixel'?'#00BB00':'#3A4A5A';
+    ctx.fillRect(0,groundY,W,3);
 
-    sorted.forEach((tw, i) => {
-      const tx = startX + i * towerSpacing;
-      if (tx > W + 50 || tx < -80) return;
-      const maxDrawH = H * 0.6;
-      const th = Math.max(20, (tw.height / Math.max(maxH, 1)) * maxDrawH);
-      const tWidth = 45;
-      const color = CFG.blockColors[i % CFG.blockColors.length];
-
-      ctx.fillStyle = color;
-      ctx.fillRect(tx, groundY - th, tWidth, th);
-      ctx.fillStyle = 'rgba(0,0,0,0.15)';
-      ctx.fillRect(tx + tWidth - 5, groundY - th, 5, th);
-      ctx.fillStyle = 'rgba(255,255,255,0.15)';
-      ctx.fillRect(tx, groundY - th, tWidth, 2);
-
-      ctx.fillStyle = 'rgba(255,255,200,0.3)';
-      for (let wy = groundY - th + 12; wy < groundY - 6; wy += 12) {
-        for (let wx = tx + 7; wx < tx + tWidth - 7; wx += 12) {
-          ctx.fillRect(wx, wy, 5, 5);
-        }
-      }
-
-      ctx.fillStyle = '#FFF';
-      ctx.font = "bold 11px 'Nunito', 'Segoe UI', system-ui, sans-serif";
-      ctx.textAlign = 'center';
-      ctx.fillText(`${tw.height}`, tx + tWidth/2, groundY - th - 6);
+    sorted.forEach((tw,i)=>{
+      const tx=startX+i*towerSpacing;
+      if(tx>W+50||tx<-80) return;
+      const maxDrawH=H*0.6;
+      const tH=Math.max(20,(tw.height/Math.max(maxH,1))*maxDrawH);
+      const tWidth=45;
+      const color=th.blockColors[i%th.blockColors.length];
+      ctx.fillStyle=color;
+      ctx.fillRect(tx,groundY-tH,tWidth,tH);
+      ctx.fillStyle='rgba(0,0,0,0.15)';
+      ctx.fillRect(tx+tWidth-5,groundY-tH,5,tH);
+      ctx.fillStyle='rgba(255,255,255,0.15)';
+      ctx.fillRect(tx,groundY-tH,tWidth,2);
+      ctx.fillStyle='rgba(255,255,200,0.25)';
+      for(let wy=groundY-tH+12;wy<groundY-6;wy+=12)
+        for(let wx=tx+7;wx<tx+tWidth-7;wx+=12)
+          ctx.fillRect(wx,wy,5,5);
+      ctx.fillStyle=th.menuTextColor;
+      ctx.font=`bold 11px ${th.fontFamily}`;
+      ctx.textAlign='center';
+      ctx.fillText(`${tw.height}`,tx+tWidth/2,groundY-tH-6);
     });
   }
 
-  ctx.fillStyle = 'rgba(255,255,255,0.5)';
-  ctx.font = "14px 'Nunito', 'Segoe UI', system-ui, sans-serif";
-  ctx.textAlign = 'center';
-  ctx.fillText(`Towers: ${data.totalTowers}  |  Highest: ${data.highestTower}`, W/2, H - 95);
+  ctx.fillStyle=th.id==='ascii'?'#00CC33':th.id==='cyberpunk'?th.hudColor+'AA':'rgba(255,255,255,0.5)';
+  ctx.font=`14px ${th.fontFamily}`;
+  ctx.textAlign='center';
+  ctx.fillText(`Towers: ${data.totalTowers}  |  Highest: ${data.highestTower}`,W/2,H-95);
 
-  buttons = [];
-  drawButton(W/2 - 55, H - 55, 100, 42, '← BACK', 'secondary');
-  drawButton(W/2 + 55, H - 55, 100, 42, '▶ PLAY', 'primary');
-  addButton('BACK', W/2 - 55, H - 55, 100, 42, () => { state = STATES.MENU; }, 'secondary');
-  addButton('PLAY', W/2 + 55, H - 55, 100, 42, () => startGame(), 'primary');
-
-  ctx.textAlign = 'left';
+  buttons=[];
+  drawButton(W/2-55,H-55,100,42,'← BACK','secondary');
+  drawButton(W/2+55,H-55,100,42,'▶ PLAY','primary');
+  addButton('BACK',W/2-55,H-55,100,42,()=>{state=STATES.MENU;},'secondary');
+  addButton('PLAY',W/2+55,H-55,100,42,()=>startGame(),'primary');
+  ctx.textAlign='left';
 }
 
 function drawButton(cx, cy, w, h, label, style) {
+  const th = theme();
   const x = cx - w/2, y = cy - h/2;
-  ctx.fillStyle = style === 'primary' ? '#4D96FF' : '#FF6B6B';
-  ctx.shadowColor = 'rgba(0,0,0,0.15)';
-  ctx.shadowBlur = 8;
-  roundRect(x, y, w, h, 14);
-  ctx.fill();
-  ctx.shadowBlur = 0;
-  ctx.fillStyle = '#FFFFFF';
-  ctx.font = "bold 17px 'Fredoka One', 'Segoe UI', system-ui, sans-serif";
-  ctx.textAlign = 'center';
-  ctx.fillText(label, cx, cy + 5);
+
+  if (th.id === 'cyberpunk') {
+    const nc = style === 'primary' ? '#00FFFF' : '#FF00FF';
+    ctx.fillStyle = 'rgba(0,0,10,0.8)';
+    roundRect(x, y, w, h, 6); ctx.fill();
+    ctx.shadowColor = nc; ctx.shadowBlur = 10;
+    ctx.strokeStyle = nc; ctx.lineWidth = 2;
+    roundRect(x, y, w, h, 6); ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = nc;
+    ctx.font = `bold 17px ${th.fontFamily}`;
+    ctx.textAlign = 'center'; ctx.fillText(label, cx, cy + 6);
+  } else if (th.id === 'ascii') {
+    ctx.fillStyle = '#001100';
+    roundRect(x, y, w, h, 4); ctx.fill();
+    ctx.strokeStyle = '#00FF41'; ctx.lineWidth = 1;
+    roundRect(x, y, w, h, 4); ctx.stroke();
+    ctx.fillStyle = '#00FF41';
+    ctx.font = `bold 17px ${th.fontFamily}`;
+    ctx.textAlign = 'center'; ctx.fillText(label, cx, cy + 6);
+  } else if (th.id === 'pixel') {
+    const bc = style === 'primary' ? '#2244FF' : '#AA0000';
+    ctx.fillStyle = bc; ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = 'rgba(255,255,255,0.32)';
+    ctx.fillRect(x, y, w, 3); ctx.fillRect(x, y, 3, h);
+    ctx.fillStyle = 'rgba(0,0,0,0.32)';
+    ctx.fillRect(x, y+h-3, w, 3); ctx.fillRect(x+w-3, y, 3, h);
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = `bold 17px ${th.fontFamily}`;
+    ctx.textAlign = 'center'; ctx.fillText(label, cx, cy + 6);
+  } else {
+    // Classic
+    ctx.fillStyle = style === 'primary' ? '#4D96FF' : '#FF6B6B';
+    ctx.shadowColor = 'rgba(0,0,0,0.15)'; ctx.shadowBlur = 8;
+    roundRect(x, y, w, h, 14); ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = `bold 17px ${th.fontFamily}`;
+    ctx.textAlign = 'center'; ctx.fillText(label, cx, cy + 5);
+  }
   ctx.textAlign = 'left';
 }
 
@@ -1702,6 +2022,39 @@ function initSettingsForm() {
   const form = document.getElementById('settings-form');
   form.innerHTML = '';
 
+  // === Theme selector ===
+  const themeSection = document.createElement('div');
+  themeSection.style.cssText = 'margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid #eee;';
+  const themeLabel = document.createElement('div');
+  themeLabel.textContent = 'Visual Theme';
+  themeLabel.style.cssText = 'font-weight:bold;font-size:14px;color:#333;margin-bottom:8px;font-family:sans-serif;';
+  themeSection.appendChild(themeLabel);
+
+  const themeGrid = document.createElement('div');
+  themeGrid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:6px;';
+
+  const refreshBtns = () => {
+    themeGrid.querySelectorAll('button').forEach((b, i) => {
+      const tid = Object.keys(THEMES)[i];
+      const active = tid === activeTheme;
+      b.style.border = `2px solid ${active ? '#4D96FF' : '#ddd'}`;
+      b.style.background = active ? '#EEF4FF' : '#fff';
+      b.style.fontWeight = active ? 'bold' : 'normal';
+    });
+  };
+
+  for (const [id, th] of Object.entries(THEMES)) {
+    const btn = document.createElement('button');
+    btn.textContent = th.name;
+    const isActive = id === activeTheme;
+    btn.style.cssText = `padding:8px 4px;border:2px solid ${isActive?'#4D96FF':'#ddd'};border-radius:8px;background:${isActive?'#EEF4FF':'#fff'};cursor:pointer;font-size:13px;font-family:sans-serif;font-weight:${isActive?'bold':'normal'};`;
+    btn.onclick = () => { activeTheme = id; Storage.saveTheme(id); refreshBtns(); };
+    themeGrid.appendChild(btn);
+  }
+  themeSection.appendChild(themeGrid);
+  form.appendChild(themeSection);
+
+  // === Physics / game settings ===
   for (const def of SETTINGS_DEFS) {
     const row = document.createElement('div');
     row.className = 'srow';
