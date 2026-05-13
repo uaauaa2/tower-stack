@@ -25,37 +25,25 @@ def validate_init_data(init_data: str, bot_token: str, max_age_seconds: int = 86
     7. Check auth_date is not too old (default 24h)
     """
     if not init_data or not bot_token:
-        import sys
-        print(f"[AUTH] Missing data: init_data={bool(init_data)}, bot_token={bool(bot_token)}", file=sys.stderr)
         return None
 
     try:
         params = urllib.parse.parse_qs(init_data, keep_blank_values=True)
-        # parse_qs returns lists, flatten
         params = {k: v[0] for k, v in params.items()}
-    except Exception as e:
-        import sys
-        print(f"[AUTH] Parse error: {e}", file=sys.stderr)
+    except Exception:
         return None
 
     received_hash = params.pop("hash", None)
     if not received_hash:
-        import sys
-        print(f"[AUTH] No hash in params. Keys: {list(params.keys())}", file=sys.stderr)
         return None
 
     # Check auth_date freshness (replay protection)
     auth_date = params.get("auth_date")
     if auth_date:
         try:
-            age = time.time() - int(auth_date)
-            if age > max_age_seconds:
-                import sys
-                print(f"[AUTH] Stale init_data: age={age}s, max={max_age_seconds}s", file=sys.stderr)
+            if time.time() - int(auth_date) > max_age_seconds:
                 return None
-        except (ValueError, TypeError) as e:
-            import sys
-            print(f"[AUTH] Bad auth_date: {e}", file=sys.stderr)
+        except (ValueError, TypeError):
             return None
 
     # Sort params and join
@@ -63,13 +51,8 @@ def validate_init_data(init_data: str, bot_token: str, max_age_seconds: int = 86
         f"{k}={v}" for k, v in sorted(params.items())
     )
 
-    import sys
-    print(f"[AUTH] data_check_string (first 200): {data_check_string[:200]}", file=sys.stderr)
-    print(f"[AUTH] bot_token length: {len(bot_token)}, bot_token[:5]={bot_token[:5]}, bot_token[-4:]={bot_token[-4:]}", file=sys.stderr)
-
     # Compute secret key: SHA256 of bot_token
     secret_key = hashlib.sha256(bot_token.encode()).digest()
-    print(f"[AUTH] secret_key hex: {secret_key.hex()[:20]}...", file=sys.stderr)
 
     # Compute HMAC-SHA256
     computed_hash = hmac.new(
@@ -79,8 +62,6 @@ def validate_init_data(init_data: str, bot_token: str, max_age_seconds: int = 86
     ).hexdigest()
 
     if not hmac.compare_digest(computed_hash, received_hash):
-        import sys
-        print(f"[AUTH] Hash mismatch. Computed: {computed_hash}, Received: {received_hash}", file=sys.stderr)
         return None
 
     # Parse user data
