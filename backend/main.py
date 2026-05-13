@@ -90,6 +90,7 @@ def health():
 def submit_score(body: ScoreSubmit):
     user = validate_init_data(body.init_data, BOT_TOKEN)
     if not user or not user.get("id"):
+        logger.warning(f"Auth failed. init_data len={len(body.init_data) if body.init_data else 0}, token_set={bool(BOT_TOKEN)}")
         raise HTTPException(status_code=401, detail="Invalid Telegram auth")
 
     telegram_id = user["id"]

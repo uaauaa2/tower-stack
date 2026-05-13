@@ -63,6 +63,8 @@ def validate_init_data(init_data: str, bot_token: str, max_age_seconds: int = 86
     ).hexdigest()
 
     if not hmac.compare_digest(computed_hash, received_hash):
+        import sys
+        print(f"[AUTH] Hash mismatch. Computed: {computed_hash}, Received: {received_hash}", file=sys.stderr)
         return None
 
     # Parse user data
