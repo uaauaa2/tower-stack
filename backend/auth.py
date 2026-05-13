@@ -65,6 +65,11 @@ def validate_init_data(init_data: str, bot_token: str, max_age_seconds: int = 86
         f"{k}={v}" for k, v in sorted(params.items())
     )
 
+    # Safe debug: log structure without secrets
+    for k in sorted(params.keys()):
+        v = params[k]
+        print(f"[AUTH] {k}: len={len(v)}", file=_sys.stderr)
+
     # Compute secret key: SHA256 of bot_token
     secret_key = hashlib.sha256(bot_token.encode()).digest()
 
