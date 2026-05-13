@@ -282,8 +282,6 @@ if (TelegramWebApp) {
   TelegramWebApp.ready();
   TelegramWebApp.expand();
   console.log('[TG] WebApp ready, theme:', TelegramWebApp.colorScheme);
-  // Warm up backend
-  fetch(API.baseUrl + '/api/health').then(r => r.json()).then(d => console.log('[API] Warmup:', d)).catch(e => console.log('[API] Warmup failed:', e.message));
 }
 
 // ============================================================
@@ -390,6 +388,8 @@ const API = {
   },
 };
 API.init();
+// Warm up backend after API is initialized
+fetch(API.baseUrl + '/api/health').then(r => r.json()).then(d => console.log('[API] Warmup:', d)).catch(e => console.log('[API] Warmup failed:', e.message));
 let state = STATES.MENU;
 let score = 0, combo = 0, bestCombo = 0, totalPerfects = 0, gameStartTime = 0;
 let lives = CFG.maxLives;
