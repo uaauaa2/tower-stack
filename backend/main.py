@@ -16,6 +16,9 @@ from models import (
     PlayerStats, StatsRequest,
     HealthResponse,
 )
+import logging
+
+logger = logging.getLogger("towerstack")
 
 # Config
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
@@ -51,6 +54,15 @@ async def allow_null_origin(request: Request, call_next):
 
 # Simple in-memory rate limiter: {telegram_id: last_submit_timestamp}
 _rate_limits: dict[int, float] = {}
+RATE_LIMIT_MAX_ENTRIES = 10000
+
+
+def _evict_rate_limits():
+    """Evict expired entries from rate limiter to prevent unbounded growth."""
+    global _rate_limits
+    if len(_rate_limits) > RATE_LIMIT_MAX_ENTRIES:
+        now = time.time()
+        _rate_limits = {k: v for k, v in _rate_limits.items() if now - v < RATE_LIMIT_SECONDS}
 
 
 @app.on_event("startup")
@@ -82,6 +94,9 @@ def submit_score(body: ScoreSubmit):
 
     telegram_id = user["id"]
 
+    # Rate limit eviction
+    _evict_rate_limits()
+
     # Rate limit
     now = time.time()
     last = _rate_limits.get(telegram_id, 0)
@@ -89,8 +104,8 @@ def submit_score(body: ScoreSubmit):
         raise HTTPException(status_code=429, detail="Too fast, slow down")
     _rate_limits[telegram_id] = now
 
-    # Basic sanity: score can't exceed ~100k (theoretical max for very long games)
-    if body.score < 0 or body.score > 100000:
+    # Basic sanity: score can't exceed ~250k (generous upper bound for very long games)
+    if body.score < 0 or body.score > 250000:
         raise HTTPException(status_code=400, detail="Invalid score")
     if body.height < 0 or body.height > 500:
         raise HTTPException(status_code=400, detail="Invalid height")
@@ -121,7 +136,8 @@ def submit_score(body: ScoreSubmit):
         conn.commit()
     except Exception as e:
         conn.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Score submission error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
     finally:
         conn.close()
 
@@ -177,7 +193,12 @@ async def telegram_webhook(request: Request):
     """Receive Telegram updates via webhook."""
     update = await request.json()
 
-    # Verify it's from Telegram (simple secret check)
-    # In production, validate with secret_token set on webhook registration
+    # Verify it's from Telegram via secret token
+    secret = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
+    expected_secret = os.environ.get("WEBHOOK_SECRET", "")
+    if expected_secret and secret != expected_secret:
+        logger.warning("Webhook received with invalid secret")
+        return JSONResponse(status_code=403, content={"error": "Forbidden"})
+
     result = await handle_update(update, BOT_TOKEN, WEBAPP_URL)
     return JSONResponse(content=result)

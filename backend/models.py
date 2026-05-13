@@ -1,7 +1,9 @@
 """Pydantic models for API request/response."""
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import Optional
+
+VALID_THEMES = {"classic", "cyberpunk", "ascii", "pixel"}
 
 
 class ScoreSubmit(BaseModel):
@@ -12,6 +14,27 @@ class ScoreSubmit(BaseModel):
     perfect_count: int = 0
     duration_ms: int = 0
     theme: str = "classic"
+
+    @field_validator("theme")
+    @classmethod
+    def validate_theme(cls, v: str) -> str:
+        if v not in VALID_THEMES:
+            raise ValueError(f"Invalid theme: {v}. Must be one of {VALID_THEMES}")
+        return v
+
+    @field_validator("best_combo", "perfect_count")
+    @classmethod
+    def validate_non_negative(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError("Must be non-negative")
+        return v
+
+    @field_validator("duration_ms")
+    @classmethod
+    def validate_duration(cls, v: int) -> int:
+        if v < 0 or v > 3600000:  # max 1 hour
+            raise ValueError("Invalid duration")
+        return v
 
 
 class ScoreResponse(BaseModel):

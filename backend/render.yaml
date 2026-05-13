@@ -9,6 +9,10 @@ services:
         sync: false
       - key: WEBAPP_URL
         sync: false
+      - key: WEBHOOK_SECRET
+        sync: false
+      - key: DB_PATH
+        value: "/opt/render/project/src/data/towerstack.db"
       - key: PYTHON_VERSION
         value: "3.12.0"
     disk:

@@ -391,7 +391,7 @@ const API = {
 };
 API.init();
 let state = STATES.MENU;
-let score = 0, combo = 0, bestCombo = 0;
+let score = 0, combo = 0, bestCombo = 0, totalPerfects = 0, gameStartTime = 0;
 let lives = CFG.maxLives;
 let tower = []; // [{x, y, color, perfect}]
 let fallingBlock = null;
@@ -457,7 +457,8 @@ function getBgZoneIndex(floors) {
 // ============================================================
 function startGame() {
   state = STATES.PLAYING;
-  score = 0; combo = 0; bestCombo = 0;
+  score = 0; combo = 0; bestCombo = 0; totalPerfects = 0;
+  gameStartTime = performance.now();
   lives = CFG.maxLives;
   tower = []; debris = []; particles = []; floatTexts = [];
   fallingBlock = null;
@@ -636,6 +637,7 @@ function landBlock() {
   if (isPerfect) {
     API.haptic('heavy');
     combo++;
+    totalPerfects++;
     if (combo > bestCombo) bestCombo = combo;
     const multiplier = combo; // after increment, combo IS the multiplier
     const earned = (CFG.baseScore + CFG.perfectBonus) * multiplier;
@@ -765,8 +767,9 @@ function gameOver() {
     console.log('[GAME] gameOver:', {score, height, bestCombo, isTelegram: API.isTelegram(), hasInitData: !!tgData, user: tgUser});
 
     if (tgData) {
+      const durationMs = Math.round(performance.now() - gameStartTime);
       API.submitScore({
-        score, height, bestCombo, perfectCount: combo, durationMs: 0,
+        score, height, bestCombo, perfectCount: totalPerfects, durationMs,
       }).then(result => {
         if (result) {
           window._lastApiResult = result;
@@ -850,7 +853,8 @@ canvas.addEventListener('touchmove', (e) => {
     const t = e.touches[0];
     cityScrollX -= (t.clientX - cityTouchLastX);
     cityTouchLastX = t.clientX;
-    cityScrollX = Math.max(0, cityScrollX);
+    const maxScroll = Math.max(0, (Storage.load().towers.length) * su * 2.8 - W + su * 3);
+    cityScrollX = Math.max(0, Math.min(maxScroll, cityScrollX));
   }
 }, { passive: false });
 
@@ -873,7 +877,8 @@ canvas.addEventListener('mousemove', (e) => {
   if (state === STATES.CITY_VIEW && cityDragging) {
     cityScrollX -= (e.clientX - cityTouchLastX);
     cityTouchLastX = e.clientX;
-    cityScrollX = Math.max(0, cityScrollX);
+    const maxScrollM = Math.max(0, (Storage.load().towers.length) * su * 2.8 - W + su * 3);
+    cityScrollX = Math.max(0, Math.min(maxScrollM, cityScrollX));
   }
 });
 
@@ -1459,7 +1464,7 @@ function initMatrixRain() {
   const chars = '0123456789ABCDEF<>[]{}|/\\!@#$%^&*';
   for (let i = 0; i < numCols; i++) {
     const len = 5 + Math.floor(Math.random() * 15);
-    const col = { x: i * colW + colW/2, speed: 35 + Math.random() * 55, len, chars: [] };
+    const col = { x: i * colW + colW/2, y: Math.random() * 600, speed: 35 + Math.random() * 55, len, chars: [] };
     for (let j = 0; j < len + 2; j++) col.chars.push(chars[Math.floor(Math.random() * chars.length)]);
     matrixColumns.push(col);
   }

@@ -6,10 +6,11 @@ using the bot token as the secret key.
 
 import hashlib
 import hmac
+import time
 import urllib.parse
 
 
-def validate_init_data(init_data: str, bot_token: str) -> dict | None:
+def validate_init_data(init_data: str, bot_token: str, max_age_seconds: int = 86400) -> dict | None:
     """
     Validate Telegram WebApp initData.
     Returns parsed user dict if valid, None if invalid.
@@ -21,6 +22,7 @@ def validate_init_data(init_data: str, bot_token: str) -> dict | None:
     4. Join as key=value\\n pairs
     5. Compute HMAC-SHA256 with SHA256(bot_token) as key
     6. Compare hashes
+    7. Check auth_date is not too old (default 24h)
     """
     if not init_data or not bot_token:
         return None
@@ -35,6 +37,15 @@ def validate_init_data(init_data: str, bot_token: str) -> dict | None:
     received_hash = params.pop("hash", None)
     if not received_hash:
         return None
+
+    # Check auth_date freshness (replay protection)
+    auth_date = params.get("auth_date")
+    if auth_date:
+        try:
+            if time.time() - int(auth_date) > max_age_seconds:
+                return None
+        except (ValueError, TypeError):
+            return None
 
     # Sort params and join
     data_check_string = "\n".join(

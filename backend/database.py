@@ -133,33 +133,41 @@ def get_player_stats(conn, player_id: int) -> dict:
 
 def get_leaderboard(conn, period: str = "all", limit: int = 10) -> list:
     """Get top scores. period: 'all' or 'weekly'."""
+    # Deduplicate by player — best score per player only
     if period == "weekly":
         cutoff = datetime.utcnow().replace(
             hour=0, minute=0, second=0, microsecond=0
         )
         # Go back to last Monday
         days_since_monday = cutoff.weekday()
-        from datetime import timedelta
         cutoff = cutoff - timedelta(days=days_since_monday)
         cutoff_str = cutoff.isoformat()
         rows = conn.execute("""
-            SELECT g.score, g.height, g.created_at, p.username, p.first_name, p.telegram_id
+            SELECT MAX(g.score) as score, MAX(g.height) as height,
+                   MAX(g.created_at) as created_at,
+                   p.username, p.first_name, p.id as player_id
             FROM games g JOIN players p ON g.player_id = p.id
             WHERE g.created_at >= ?
-            ORDER BY g.score DESC LIMIT ?
+            GROUP BY g.player_id
+            ORDER BY score DESC LIMIT ?
         """, (cutoff_str, limit)).fetchall()
     else:
         rows = conn.execute("""
-            SELECT g.score, g.height, g.created_at, p.username, p.first_name, p.telegram_id
+            SELECT MAX(g.score) as score, MAX(g.height) as height,
+                   MAX(g.created_at) as created_at,
+                   p.username, p.first_name, p.id as player_id
             FROM games g JOIN players p ON g.player_id = p.id
-            ORDER BY g.score DESC LIMIT ?
+            GROUP BY g.player_id
+            ORDER BY score DESC LIMIT ?
         """, (limit,)).fetchall()
 
     result = []
     for i, r in enumerate(rows):
+        # Use first_name or internal ID — never expose telegram_id
+        name = r["username"] or r["first_name"] or f"Player {r['player_id']}"
         result.append({
             "rank": i + 1,
-            "username": r["username"] or f"Player #{r['telegram_id']}",
+            "username": name,
             "score": r["score"],
             "height": r["height"],
             "date": r["created_at"][:10] if r["created_at"] else "",
