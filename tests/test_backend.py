@@ -149,6 +149,28 @@ class TestAuth:
         assert result is not None
         assert result["first_name"] == "Тест"
 
+    def test_signature_field_ignored(self):
+        """Telegram includes 'signature' in init_data but NOT in hash computation."""
+        user_json = json.dumps({"id": 999, "username": "sig_test", "first_name": "Sig"})
+        params = {
+            "query_id": "AAHtest456",
+            "user": user_json,
+            "auth_date": str(int(time.time())),
+        }
+        # Compute hash WITHOUT signature
+        data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(params.items()))
+        secret_key = hashlib.sha256(self.BOT_TOKEN.encode()).digest()
+        computed_hash = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
+        
+        # Add both hash and signature
+        params["hash"] = computed_hash
+        params["signature"] = "v1.some_signature_value_here"
+        init_data = urllib.parse.urlencode(params)
+        
+        result = validate_init_data(init_data, self.BOT_TOKEN)
+        assert result is not None
+        assert result["id"] == 999
+
 
 # ============================================================
 # Model Validation Tests

@@ -42,6 +42,9 @@ def validate_init_data(init_data: str, bot_token: str, max_age_seconds: int = 86
         print("[AUTH] FAIL: no hash param", file=_sys.stderr)
         return None
 
+    # Remove signature — Telegram includes it but does NOT use it in hash computation
+    params.pop("signature", None)
+
     # Check auth_date freshness (replay protection)
     auth_date = params.get("auth_date")
     if auth_date:
