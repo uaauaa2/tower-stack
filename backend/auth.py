@@ -25,32 +25,46 @@ def validate_init_data(init_data: str, bot_token: str, max_age_seconds: int = 86
     7. Check auth_date is not too old (default 24h)
     """
     if not init_data or not bot_token:
+        import sys
+        print(f"[AUTH] Missing data: init_data={bool(init_data)}, bot_token={bool(bot_token)}", file=sys.stderr)
         return None
 
     try:
         params = urllib.parse.parse_qs(init_data, keep_blank_values=True)
         # parse_qs returns lists, flatten
         params = {k: v[0] for k, v in params.items()}
-    except Exception:
+    except Exception as e:
+        import sys
+        print(f"[AUTH] Parse error: {e}", file=sys.stderr)
         return None
 
     received_hash = params.pop("hash", None)
     if not received_hash:
+        import sys
+        print(f"[AUTH] No hash in params. Keys: {list(params.keys())}", file=sys.stderr)
         return None
 
     # Check auth_date freshness (replay protection)
     auth_date = params.get("auth_date")
     if auth_date:
         try:
-            if time.time() - int(auth_date) > max_age_seconds:
+            age = time.time() - int(auth_date)
+            if age > max_age_seconds:
+                import sys
+                print(f"[AUTH] Stale init_data: age={age}s, max={max_age_seconds}s", file=sys.stderr)
                 return None
-        except (ValueError, TypeError):
+        except (ValueError, TypeError) as e:
+            import sys
+            print(f"[AUTH] Bad auth_date: {e}", file=sys.stderr)
             return None
 
     # Sort params and join
     data_check_string = "\n".join(
         f"{k}={v}" for k, v in sorted(params.items())
     )
+
+    import sys
+    print(f"[AUTH] data_check_string (first 200): {data_check_string[:200]}", file=sys.stderr)
 
     # Compute secret key: SHA256 of bot_token
     secret_key = hashlib.sha256(bot_token.encode()).digest()
