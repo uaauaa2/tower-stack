@@ -65,9 +65,11 @@ def validate_init_data(init_data: str, bot_token: str, max_age_seconds: int = 86
 
     import sys
     print(f"[AUTH] data_check_string (first 200): {data_check_string[:200]}", file=sys.stderr)
+    print(f"[AUTH] bot_token length: {len(bot_token)}, bot_token[:5]={bot_token[:5]}, bot_token[-4:]={bot_token[-4:]}", file=sys.stderr)
 
     # Compute secret key: SHA256 of bot_token
     secret_key = hashlib.sha256(bot_token.encode()).digest()
+    print(f"[AUTH] secret_key hex: {secret_key.hex()[:20]}...", file=sys.stderr)
 
     # Compute HMAC-SHA256
     computed_hash = hmac.new(
