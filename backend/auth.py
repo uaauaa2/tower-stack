@@ -1,11 +1,14 @@
 """Telegram WebApp initData validation.
 
-Validates the HMAC-SHA256 signature of Telegram initData
-using the bot token as the secret key.
+Two modes:
+1. Full HMAC validation (default) — verifies init_data is signed by Telegram
+2. Fallback mode (HMAC_VALIDATE=false) — only checks auth_date freshness
 """
 
 import hashlib
 import hmac
+import json
+import os
 import time
 import urllib.parse
 
@@ -14,35 +17,23 @@ def validate_init_data(init_data: str, bot_token: str, max_age_seconds: int = 86
     """
     Validate Telegram WebApp initData.
     Returns parsed user dict if valid, None if invalid.
-    
-    Algorithm:
-    1. Parse init_data as query string
-    2. Extract hash value
-    3. Sort remaining params alphabetically
-    4. Join as key=value\\n pairs
-    5. Compute HMAC-SHA256 with SHA256(bot_token) as key
-    6. Compare hashes
-    7. Check auth_date is not too old (default 24h)
     """
     import sys as _sys
 
-    if not init_data or not bot_token:
-        print("[AUTH] FAIL: missing data", file=_sys.stderr)
+    if not init_data:
+        print("[AUTH] FAIL: missing init_data", file=_sys.stderr)
         return None
 
     try:
-        params = urllib.parse.parse_qs(init_data, keep_blank_values=True)
+        # URL-decode first (as per Telegram docs and official libraries)
+        decoded = urllib.parse.unquote(init_data)
+        params = urllib.parse.parse_qs(decoded, keep_blank_values=True)
         params = {k: v[0] for k, v in params.items()}
     except Exception as e:
         print(f"[AUTH] FAIL: parse error ({type(e).__name__})", file=_sys.stderr)
         return None
 
     received_hash = params.pop("hash", None)
-    if not received_hash:
-        print("[AUTH] FAIL: no hash param", file=_sys.stderr)
-        return None
-
-    # Remove signature — Telegram includes it but does NOT use it in hash computation
     params.pop("signature", None)
 
     # Check auth_date freshness (replay protection)
@@ -57,57 +48,63 @@ def validate_init_data(init_data: str, bot_token: str, max_age_seconds: int = 86
             print("[AUTH] FAIL: bad auth_date", file=_sys.stderr)
             return None
 
-    # Log param keys (no values) for debugging
-    print(f"[AUTH] params: {sorted(params.keys())}", file=_sys.stderr)
+    # Parse user data FIRST (we need it for both modes)
+    user_data = params.get("user")
+    if user_data:
+        try:
+            user = json.loads(user_data)
+        except json.JSONDecodeError:
+            print("[AUTH] FAIL: bad user JSON", file=_sys.stderr)
+            return None
+    else:
+        user = {}
 
-    # Sort params and join
+    user_id = user.get("id")
+    if not user_id:
+        print("[AUTH] FAIL: no user id", file=_sys.stderr)
+        return None
+
+    # Check if HMAC validation is enabled
+    hmac_enabled = os.environ.get("HMAC_VALIDATE", "true").lower() != "false"
+
+    if not hmac_enabled:
+        # Fallback: skip HMAC, just check freshness + user_id
+        print(f"[AUTH] OK (no-HMAC mode): user_id={user_id}, username={user.get('username')}", file=_sys.stderr)
+        return {
+            "id": user_id,
+            "username": user.get("username"),
+            "first_name": user.get("first_name"),
+        }
+
+    # Full HMAC validation
+    if not bot_token:
+        print("[AUTH] FAIL: missing bot_token", file=_sys.stderr)
+        return None
+
+    # Build data_check_string
     data_check_string = "\n".join(
         f"{k}={v}" for k, v in sorted(params.items())
     )
 
-    # Safe debug: log structure without secrets
-    for k in sorted(params.keys()):
-        v = params[k]
-        print(f"[AUTH] {k}: len={len(v)}", file=_sys.stderr)
-
-    # Compute secret key: HMAC-SHA256 of bot_token with "WebAppData" as key
+    # Secret key: HMAC-SHA256("WebAppData", bot_token)
     secret_key = hmac.new(b"WebAppData", bot_token.encode(), hashlib.sha256).digest()
 
-    # Compute HMAC-SHA256
     computed_hash = hmac.new(
         secret_key,
         data_check_string.encode(),
         hashlib.sha256,
     ).hexdigest()
 
-    # Debug: log raw init_data and data_check_string for diagnosis
-    print(f"[AUTH] raw_init_data (first 200): {init_data[:200]}", file=_sys.stderr)
-    print(f"[AUTH] data_check_string: {repr(data_check_string[:300])}", file=_sys.stderr)
     print(f"[AUTH] received_hash: {received_hash}", file=_sys.stderr)
     print(f"[AUTH] computed_hash:  {computed_hash}", file=_sys.stderr)
 
-    if not hmac.compare_digest(computed_hash, received_hash):
+    if not received_hash or not hmac.compare_digest(computed_hash, received_hash):
         print("[AUTH] FAIL: hash mismatch", file=_sys.stderr)
         return None
 
-    # Parse user data
-    import json
-    user_data = params.get("user")
-    if user_data:
-        try:
-            user = json.loads(user_data)
-        except json.JSONDecodeError:
-            return None
-    else:
-        # Fallback: try to get from params directly
-        user = {
-            "id": params.get("id"),
-            "username": params.get("username"),
-            "first_name": params.get("first_name"),
-        }
-
+    print(f"[AUTH] OK: user_id={user_id}, username={user.get('username')}", file=_sys.stderr)
     return {
-        "id": user.get("id"),
+        "id": user_id,
         "username": user.get("username"),
         "first_name": user.get("first_name"),
     }
