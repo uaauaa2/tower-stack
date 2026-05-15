@@ -193,10 +193,13 @@ async def telegram_webhook(request: Request):
     """Receive Telegram updates via webhook."""
     update = await request.json()
 
-    # Verify it's from Telegram via secret token
+    # Verify it's from Telegram via secret token (REQUIRED)
     secret = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
-    expected_secret = os.environ.get("WEBHOOK_SECRET", "")
-    if expected_secret and secret != expected_secret:
+    expected_secret = os.environ.get("WEBHOOK_SECRET")
+    if not expected_secret:
+        logger.error("WEBHOOK_SECRET not set — webhook endpoint disabled")
+        return JSONResponse(status_code=503, content={"error": "Service misconfigured"})
+    if secret != expected_secret:
         logger.warning("Webhook received with invalid secret")
         return JSONResponse(status_code=403, content={"error": "Forbidden"})
 

@@ -853,6 +853,7 @@ canvas.addEventListener('touchmove', (e) => {
     const t = e.touches[0];
     cityScrollX -= (t.clientX - cityTouchLastX);
     cityTouchLastX = t.clientX;
+    const su = Math.max(14, W * 0.065);
     const maxScroll = Math.max(0, (Storage.load().towers.length) * su * 2.8 - W + su * 3);
     cityScrollX = Math.max(0, Math.min(maxScroll, cityScrollX));
   }
@@ -877,6 +878,7 @@ canvas.addEventListener('mousemove', (e) => {
   if (state === STATES.CITY_VIEW && cityDragging) {
     cityScrollX -= (e.clientX - cityTouchLastX);
     cityTouchLastX = e.clientX;
+    const su = Math.max(14, W * 0.065);
     const maxScrollM = Math.max(0, (Storage.load().towers.length) * su * 2.8 - W + su * 3);
     cityScrollX = Math.max(0, Math.min(maxScrollM, cityScrollX));
   }

@@ -123,7 +123,7 @@ class TestAuth:
 
     def test_real_bot_token_format(self):
         """Test with a real-looking bot token format."""
-        real_token = "8975490170:AAFRJ4IZvlg6xF6005ZpotOIC_GLmAYgaoc"
+        real_token = "1234567890:AAHtest_FAKE_TOKEN_for_unit_tests_only-no-real-value"
         init_data = generate_init_data(real_token, user_id=379891355,
                                        username="uaauaa2", first_name="Konstantin")
         result = validate_init_data(init_data, real_token)
