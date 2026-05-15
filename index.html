@@ -653,9 +653,10 @@ function landBlock() {
     }
     triggerShake(3, 0.15);
   } else {
-    // Off-center landing
-    const multiplier = combo + 1;
+    // Off-center landing — combo resets
+    const multiplier = 1;
     score += CFG.baseScore * multiplier;
+    combo = 0;
     triggerShake(1, 0.08);
   }
 
@@ -668,7 +669,7 @@ function landBlock() {
   }
 
   // Score float (reuse earned from scoring block)
-  const floatEarned = isPerfect ? (CFG.baseScore + CFG.perfectBonus) * combo : CFG.baseScore * (combo + 1);
+  const floatEarned = isPerfect ? (CFG.baseScore + CFG.perfectBonus) * combo : CFG.baseScore;
   floatTexts.push({
     text: `+${floatEarned}`, x: placed.x + BS/2, y: placed.y + BS/2,
     vy: -40, life: 0.8, maxLife: 0.8, color: '#FFFFFF', size: 16
@@ -769,16 +770,6 @@ function gameOver() {
     if (tgData) {
       const durationMs = Math.round(performance.now() - gameStartTime);
       
-      // Debug: test auth validation
-      fetch(API.baseUrl + '/api/debug-auth', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ init_data: tgData }),
-      }).then(r => r.json()).then(d => {
-        window._debugAuth = d;
-        console.log('[DEBUG-AUTH]', JSON.stringify(d, null, 2));
-      }).catch(e => console.log('[DEBUG-AUTH] error:', e.message));
-      
       API.submitScore({
         score, height, bestCombo, perfectCount: totalPerfects, durationMs,
       }).then(result => {
@@ -828,7 +819,9 @@ function handleAction() {
   switch (state) {
     case STATES.MENU: startGame(); break;
     case STATES.PLAYING: dropBlock(); break;
-    case STATES.GAME_OVER: startGame(); break;
+    case STATES.GAME_OVER:
+      if (gameOverTimer > 0.5) startGame(); // debounce 500ms
+      break;
   }
 }
 
@@ -2558,6 +2551,7 @@ function drawCityView() {
 // DRAW — Leaderboard Screen
 // ============================================================
 let _lbFetchTimer = 0;
+let _lbFetchError = false;
 
 function drawLeaderboardScreen() {
   const th = theme();
@@ -2582,9 +2576,11 @@ function drawLeaderboardScreen() {
   // Fetch data if needed
   if (!leaderboardData && t - _lbFetchTimer > 2) {
     _lbFetchTimer = t;
+    _lbFetchError = false;
     API.getLeaderboard(leaderboardTab, 10).then(data => {
       leaderboardData = data;
     }).catch(() => {
+      _lbFetchError = true;
       leaderboardData = { period: leaderboardTab, entries: [] };
     });
   }
@@ -2620,10 +2616,10 @@ function drawLeaderboardScreen() {
 
   buttons = [];
   addButton('TAB_ALL', W/2 - tabW - 4, tabY, tabW, tabH, () => {
-    leaderboardTab = 'all'; leaderboardData = null; _lbFetchTimer = 0;
+    leaderboardTab = 'all'; leaderboardData = null; _lbFetchTimer = 0; _lbFetchError = false;
   }, 'secondary');
   addButton('TAB_WEEK', W/2 + 4, tabY, tabW, tabH, () => {
-    leaderboardTab = 'weekly'; leaderboardData = null; _lbFetchTimer = 0;
+    leaderboardTab = 'weekly'; leaderboardData = null; _lbFetchTimer = 0; _lbFetchError = false;
   }, 'secondary');
 
   // Entries
@@ -2634,8 +2630,13 @@ function drawLeaderboardScreen() {
   if (entries.length === 0 && leaderboardData) {
     ctx.fillStyle = 'rgba(255,255,255,0.4)';
     ctx.font = `${su*0.7}px ${th.fontFamily}`;
-    ctx.fillText('No games played yet!', W/2, entryStartY + su * 3);
-    ctx.fillText('Be the first! 🎮', W/2, entryStartY + su * 4.5);
+    if (_lbFetchError) {
+      ctx.fillText('Failed to load leaderboard', W/2, entryStartY + su * 3);
+      ctx.fillText('Tap a tab to retry', W/2, entryStartY + su * 4.5);
+    } else {
+      ctx.fillText('No games played yet!', W/2, entryStartY + su * 3);
+      ctx.fillText('Be the first! 🎮', W/2, entryStartY + su * 4.5);
+    }
   } else if (!leaderboardData) {
     ctx.fillStyle = 'rgba(255,255,255,0.4)';
     ctx.font = `${su*0.7}px ${th.fontFamily}`;

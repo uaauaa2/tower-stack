@@ -186,60 +186,6 @@ def player_stats(body: StatsRequest):
     return PlayerStats(**stats)
 
 
-# ── Debug: Auth Test ────────────────────────────────────────────
-
-@app.post("/api/debug-auth")
-async def debug_auth(request: Request):
-    """Debug endpoint to diagnose init_data validation. Returns full details."""
-    body = await request.json()
-    init_data = body.get("init_data", "")
-    
-    import hashlib as _hl
-    import hmac as _hmac
-    import urllib.parse as _up
-    
-    result = {"steps": []}
-    
-    if not init_data:
-        result["error"] = "no init_data"
-        return result
-    
-    result["raw_init_data_len"] = len(init_data)
-    result["raw_first_100"] = init_data[:100]
-    
-    # Parse
-    try:
-        params = _up.parse_qs(init_data, keep_blank_values=True)
-        params = {k: v[0] for k, v in params.items()}
-    except Exception as e:
-        result["error"] = f"parse error: {e}"
-        return result
-    
-    result["parsed_keys"] = sorted(params.keys())
-    
-    received_hash = params.pop("hash", None)
-    params.pop("signature", None)
-    result["received_hash"] = received_hash
-    
-    # data_check_string
-    data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(params.items()))
-    result["data_check_string"] = data_check_string
-    
-    # Method 1: SHA256(bot_token)
-    secret1 = _hl.sha256(BOT_TOKEN.encode()).digest()
-    hash1 = _hmac.new(secret1, data_check_string.encode(), _hl.sha256).hexdigest()
-    result["hash_sha256_token"] = hash1
-    
-    # Method 2: HMAC-SHA256("WebAppData", bot_token)
-    secret2 = _hmac.new(b"WebAppData", BOT_TOKEN.encode(), _hl.sha256).digest()
-    hash2 = _hmac.new(secret2, data_check_string.encode(), _hl.sha256).hexdigest()
-    result["hash_hmac_webappdata"] = hash2
-    
-    result["match_sha256"] = hash1 == received_hash
-    result["match_hmac"] = hash2 == received_hash
-    
-    return result
-
 # ── Telegram Webhook ────────────────────────────────────────────
 
 @app.post("/webhook")

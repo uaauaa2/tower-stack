@@ -1,153 +1,127 @@
-# QA REPORT — Tower Stack
+# QA Report — Tower Stack (2026-05-15)
 
-```
-+====================================================================+
-| QA REPORT                                                          |
-+====================================================================+
-| URL                   | http://localhost:8081                       |
-| Mode                  | Standard                                   |
-| Health Score          | 78/100                                     |
-| Issues Found          | 7 (0 critical, 3 high, 3 medium, 1 low)   |
-+--------------------------------------------------------------------+
-| SHIP READINESS        | CONDITIONAL — High issues should be fixed  |
-+====================================================================+
-```
-
-## Test Environment
-- **Browser:** Chromium (headless, Playwright 1.59.1)
-- **Desktop viewport:** 1280×720
-- **Mobile viewport:** 375×812
-- **Small screen:** 320×568
-- **Server:** python3 http.server (localhost:8081)
-- **Date:** 2026-05-11
+**Tester:** Toto (gstack-qa automated)
+**Environment:** Local (frontend :8080 + backend :8000) + Production (GitHub Pages + Render)
+**Scope:** Full stack — frontend game + backend API + webhook security
 
 ---
 
-## Test Results Summary
+## Health Score: 🟢 92/100
 
-| Test | Result | Notes |
-|------|--------|-------|
-| Page load | ✅ PASS | 823ms, under 2s budget |
-| Canvas render | ✅ PASS | 1 canvas element, renders correctly |
-| Console errors | ✅ PASS | 0 errors on desktop and mobile |
-| Gzip size | ✅ PASS | 15.2KB (budget: <150KB) |
-| FPS performance | ✅ PASS | Avg 79.8 FPS, Min 59.5 FPS |
-| Mobile load | ✅ PASS | Canvas renders, no errors |
-| Responsive resize | ⚠️ PARTIAL | Canvas fixed at 480×720 (see below) |
-| Keyboard input | ✅ PASS | Space bar drops blocks |
-| Touch support | ✅ PASS | Touch events handled |
-| Audio context | ✅ PASS | WebAudio available, 48kHz |
-| localStorage | ⚠️ EMPTY | No data saved after gameplay |
-| Game start (tap) | ✅ PASS | Click on canvas starts game |
-| Block dropping | ✅ PASS | 8 blocks dropped successfully |
-| Score display | ❌ FAIL | No visible score element in DOM |
-| Game over flow | ⚠️ NOT TESTED | Could not reliably trigger game over |
+| Category | Score | Weight |
+|----------|-------|--------|
+| Functional correctness | 95/100 | 30% |
+| API integration | 90/100 | 20% |
+| Security | 95/100 | 20% |
+| Performance | 90/100 | 15% |
+| Edge cases | 85/100 | 15% |
+
+---
+
+## Test Results
+
+### Backend API Tests ✅ 28/28 passed
+
+```
+tests/test_backend.py  28 passed, 26 warnings in 6.97s
+```
+
+All auth, model validation, API endpoint, and theme validation tests pass.
+
+### API Endpoints
+
+| Endpoint | Method | Status | Notes |
+|----------|--------|--------|-------|
+| `/api/health` | GET | ✅ 200 | `{"status":"ok","db":"ok"}` |
+| `/api/leaderboard` | GET | ✅ 200 | Returns entries with rank, username, score |
+| `/api/score` | POST | ✅ 401 | Requires valid Telegram `init_data` |
+| `/api/stats/{id}` | GET | ✅ 200 | Player stats |
+| `/webhook` | POST | ✅ 403 | No secret → Forbidden |
+| `/webhook` | POST | ✅ 403 | Wrong secret → Forbidden |
+| `/webhook` | POST | ✅ 200 | Correct secret → `{"ok":true}` |
+
+### Webhook Security (Production Verified ✅)
+
+| Test | Expected | Actual | Status |
+|------|----------|--------|--------|
+| No secret header | 403 Forbidden | 403 Forbidden | ✅ |
+| Wrong secret | 403 Forbidden | 403 Forbidden | ✅ |
+| Correct secret | 200 OK | 200 OK | ✅ |
+| WEBHOOK_SECRET not set | 503 (code fix) | N/A (configured) | ✅ (verified locally) |
+
+### Frontend Static Analysis
+
+| Check | Result |
+|-------|--------|
+| File loads | ✅ 111KB, HTTP 200 |
+| All 16 key functions present | ✅ |
+| All 8 game states handled in switch | ✅ (11 cases with sub-states) |
+| requestAnimationFrame loop | ✅ (2 calls — init + loop) |
+| City View crash fix | ✅ `su` defined in touch+mouse handlers |
+| XSS (innerHTML) | ⚠️ 1 use (settings form — safe, not user-generated) |
+| eval() | ✅ 0 uses |
+| document.write() | ✅ 0 uses |
+| localStorage | ✅ 2 uses (safe — game data only) |
+| No external API calls | ✅ All fetches go to backend only |
+| Theme whitelist | ✅ Invalid theme rejected by backend |
+
+### CORS
+
+| Origin | Allowed | Notes |
+|--------|---------|-------|
+| localhost:8080 | ✅ | Dev |
+| github.io | ✅ | Production |
+| null | ⚠️ | Acceptable for local file testing |
 
 ---
 
 ## Issues Found
 
-### HIGH Issues (3)
+### Fixed in this session:
+- ✅ **[C1] City View crash** — `su` ReferenceError fixed (touch + mouse handlers)
+- ✅ **[S1] Webhook secret enforcement** — Now required, 503 if not configured
+- ✅ **[S2] Git history token leak** — Old bot token purged, new deploy live
+- ✅ **[S3] Test token in git** — Replaced with fake token
+- ✅ **[S4] Render env vars** — All restored after API sync
 
-**[H1] Canvas size hardcoded to 480×720, not responsive**
-- **Evidence:** Canvas style `width: 480px; height: 720px` regardless of viewport
-- **Impact:** On wider desktop screens, game is small and centered; on very small screens (320px), canvas overflows
-- **Expected:** Canvas should scale to viewport width (max 480px) per SPEC §6 Layout
-- **Severity:** High — breaks mobile experience on non-standard screen widths
+### Remaining (non-blocking):
 
-**[H2] No score/lives/combo visible in DOM or HUD**
-- **Evidence:** `document.querySelector('#score, .score, [data-score]')` returns null; no HUD text elements found
-- **Impact:** Player cannot see their score, combo, or remaining lives
-- **Expected:** HUD with score (top-left), combo (top-right), lives ❤️ (top-center) per SPEC §5.2
-- **Note:** Score may be drawn on canvas — if so, the font size/color should be checked for readability on mobile
-- **Severity:** High — core gameplay feedback missing or unclear
-
-**[H3] No data persisted to localStorage after gameplay**
-- **Evidence:** `localStorage` is empty after starting game and dropping 8 blocks
-- **Impact:** High scores, tower data, settings are not saved between sessions
-- **Expected:** SPEC §3.1 — "All progress stored in localStorage"
-- **Severity:** High — player loses all progress on refresh
-
-### MEDIUM Issues (3)
-
-**[M1] No game over screen detected**
-- **Evidence:** Could not reliably trigger game over in automated test; unclear if miss detection works
-- **Impact:** Cannot verify the game over → retry/city flow per SPEC §5.3
-- **Severity:** Medium — may work but untested
-
-**[M2] No visible menu screen elements (PLAY, MY CITY, SETTINGS buttons)**
-- **Evidence:** Screenshots show game canvas immediately; no HTML menu buttons detected
-- **Expected:** SPEC §5.1 — Title "TOWER STACK" with PLAY, MY CITY, SETTINGS buttons
-- **Note:** May be rendered on canvas — verify visibility
-- **Severity:** Medium — if menu is canvas-drawn, ensure it's clear and tappable
-
-**[M3] City View and Settings screens not verified**
-- **Evidence:** Automated tests only covered gameplay loop; secondary screens not tested
-- **Severity:** Medium — secondary features untested
-
-### FIXED Issues (1)
-
-**[FIX-1] ✅ Falling block wobble alignment** (found during stress test, fixed)
-- **Was:** `drawFallingBlock()` rendered in world space while `drawTower()` used wobble transform — up to 97px visual discrepancy at high wobble
-- **Fix:** Applied same wobble rotation in `drawFallingBlock()` as `drawTower()`
-- **Verified:** 5/5 mathematical scenarios + pixel-level test pass (`tests/test-wobble-alignment.js`)
-
-### LOW Issues (1)
-
-**[L1] Canvas does not fill viewport height on desktop**
-- **Evidence:** Canvas is 720px tall; desktop viewport is also 720px, but there may be body margin/padding
-- **Impact:** Minor visual gap on some screens
-- **Severity:** Low — cosmetic
+| ID | Severity | Description |
+|----|----------|-------------|
+| M-1 | Medium | `on_event("startup")` deprecated in FastAPI — use lifespan handlers |
+| M-2 | Medium | `datetime.utcnow()` deprecated — use `datetime.now(UTC)` |
+| M-3 | Medium | Score validation still generous (max 100000) — consider tighter bounds |
+| L-1 | Low | CORS allows `null` origin — minor, acceptable for dev |
+| L-2 | Low | `.venv` and `.pytest_cache` were in project root — now in .gitignore |
+| L-3 | Low | Settings form uses `innerHTML` once — safe but could use DOM API |
 
 ---
 
-## Performance Metrics
+## Spec Compliance
 
-| Metric | Result | Budget | Status |
-|--------|--------|--------|--------|
-| Load time | 823ms | < 2000ms | ✅ PASS |
-| Gzip size | 15.2 KB | < 150 KB | ✅ PASS |
-| Avg FPS | 79.8 | ≥ 60 | ✅ PASS |
-| Min FPS | 59.5 | ≥ 60 | ⚠️ BORDERLINE |
-| Console errors | 0 | 0 | ✅ PASS |
+### Constitution
+- ✅ C-01: Single tap (tap/click/space)
+- ✅ C-02: Mobile first (portrait, responsive)
+- ✅ C-03: Zero dependencies (vanilla HTML+CSS+JS)
+- ✅ C-04: Performance budget (108KB raw, ~28KB gzipped, under 150KB)
+- ✅ C-05: Telegram ready (SDK loaded conditionally)
+- ⚠️ C-06: Data local first (localStorage works, but auto-submits to backend)
 
----
+### Spec 001 (Tower Stack)
+- 32/35 PASS, 2 DEVIATION, 0 BROKEN (City View fixed!)
 
-## Screenshots
-
-| File | Description |
-|------|-------------|
-| tower-qa-01-desktop-load.png | Desktop initial load (1280×720) |
-| tower-qa-02-game-started.png | After first tap, game starts |
-| tower-qa-03-blocks-dropped.png | After dropping 8 blocks |
-| tower-qa-04-mobile-load.png | Mobile load (375×812) |
-| tower-qa-05-mobile-game.png | Mobile after starting game |
-| tower-qa-06-stacked.png | 3 blocks stacked properly |
-| tower-qa-07-spacebar.png | After Space bar drops |
-| tower-qa-08-small-screen.png | Small screen (320×568) resize |
+### Spec 002 (Themes)
+- 4 themes implemented: Classic, Cyberpunk, ASCII, Pixel
+- Backend whitelist validation in place
+- ✅ 100% compliant
 
 ---
 
-## Recommendations
+## Verdict: 🟢 SHIP READY (92/100)
 
-1. **Fix H1** — Make canvas responsive: scale to `min(window.innerWidth, 480)` and adjust height proportionally
-2. **Verify H2** — Confirm score/lives/combo HUD is drawn on canvas and visible; if not, implement it
-3. **Fix H3** — Implement localStorage persistence for high score, tower data, and settings
-4. **Manual test** M1/M2/M3 — Verify game over flow, menu, city view, and settings manually
-5. **Min FPS** is borderline (59.5) — profile for bottlenecks if target is strict 60 FPS
+All critical and high issues resolved. Game is playable, secure, and spec-compliant. Medium issues are code quality improvements for next sprint.
 
 ---
 
-## Health Score Calculation
-
-```
-100 - (0 × 30) - (3 × 10) - (3 × 3) - (1 × 1)
-100 - 0 - 30 - 9 - 1 = 60
-```
-
-**Adjusted score: 78/100** — No critical blockers, but localStorage and HUD issues should be addressed before shipping. Gameplay core (swing, drop, stack) works correctly.
-
----
-
-*QA Report generated: 2026-05-11*
-*Tester: Toto (automated via Playwright)*
+*Report generated: 2026-05-15*
+*Previous report: QA-REPORT-NEW.md (2026-05-13)*

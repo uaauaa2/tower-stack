@@ -64,43 +64,10 @@ def validate_init_data(init_data: str, bot_token: str = "", max_age_seconds: int
             print(f"[AUTH] Ed25519 FAIL: {e}", file=_sys.stderr)
             return None
 
-    # Fallback: basic validation (freshness + parse only)
-    if not hmac_enabled:
-        try:
-            decoded = urllib.parse.unquote(init_data)
-            params = urllib.parse.parse_qs(decoded, keep_blank_values=True)
-            params = {k: v[0] for k, v in params.items()}
-        except Exception:
-            return None
-
-        auth_date = params.get("auth_date")
-        if auth_date:
-            try:
-                age = time.time() - int(auth_date)
-                if age > max_age_seconds:
-                    return None
-            except (ValueError, TypeError):
-                return None
-
-        user_data = params.get("user")
-        if user_data:
-            try:
-                user = json.loads(user_data)
-            except json.JSONDecodeError:
-                return None
-        else:
-            user = {}
-
-        user_id = user.get("id")
-        if not user_id:
-            return None
-
-        print(f"[AUTH] OK (fallback): user_id={user_id}, username={user.get('username')}", file=_sys.stderr)
-        return {
-            "id": user_id,
-            "username": user.get("username"),
-            "first_name": user.get("first_name"),
-        }
+    # No library available and HMAC not enabled — reject
+    if not _HAS_LIB and not hmac_enabled:
+        print("[AUTH] FAIL: no Ed25519 library and HMAC disabled — cannot validate", file=_sys.stderr)
+        return None
 
     # Full HMAC validation (legacy, currently broken)
     import hashlib

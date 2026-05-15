@@ -3,8 +3,16 @@
 Processes incoming updates via webhook.
 """
 
+import html
 import json
 from database import get_db, get_leaderboard, get_player_stats
+
+
+def _esc(text):
+    """Escape HTML special characters for Telegram HTML parse mode."""
+    if text is None:
+        return ""
+    return html.escape(str(text))
 
 
 def format_leaderboard_text(entries: list, title: str) -> str:
@@ -13,7 +21,7 @@ def format_leaderboard_text(entries: list, title: str) -> str:
     medals = ["🥇", "🥈", "🥉"]
     for e in entries[:10]:
         medal = medals[e["rank"] - 1] if e["rank"] <= 3 else f"  {e['rank']}."
-        lines.append(f"{medal} <b>{e['username']}</b> — {e['score']:,} pts ({e['height']} floors)")
+        lines.append(f"{medal} <b>{_esc(e['username'])}</b> — {e['score']:,} pts ({e['height']} floors)")
     lines.append("\n🎮 Play now: /play")
     return "\n".join(lines)
 
@@ -24,7 +32,7 @@ def format_stats_text(stats: dict) -> str:
         f"📊 <b>Your Stats</b>\n",
         f"Games: <b>{stats['total_games']}</b>",
         f"Best score: <b>{stats['best_score']:,}</b>",
-        f"Highest tower: <b>{stats['best_height']}</b> floors",
+        f"Highest tower: <b>{_esc(stats['best_height'])}</b> floors",
         f"Best combo: <b>×{stats['best_combo']}</b>",
         f"Avg score: {stats['avg_score']:,}",
         f"Avg height: {stats['avg_height']} floors",

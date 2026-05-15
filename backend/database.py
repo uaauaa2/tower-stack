@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 import sqlite3
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 DB_PATH = os.environ.get("DB_PATH", os.path.join(os.path.dirname(__file__), "data", "towerstack.db"))
 
@@ -64,7 +64,7 @@ def init_db():
 
 def upsert_player(conn, telegram_id: int, username: str | None, first_name: str | None) -> int:
     """Insert or update a player. Returns player id."""
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).isoformat()
     row = conn.execute("SELECT id FROM players WHERE telegram_id = ?", (telegram_id,)).fetchone()
     if row:
         conn.execute(
@@ -135,7 +135,7 @@ def get_leaderboard(conn, period: str = "all", limit: int = 10) -> list:
     """Get top scores. period: 'all' or 'weekly'."""
     # Deduplicate by player — best score per player only
     if period == "weekly":
-        cutoff = datetime.utcnow().replace(
+        cutoff = datetime.now(timezone.utc).replace(
             hour=0, minute=0, second=0, microsecond=0
         )
         # Go back to last Monday

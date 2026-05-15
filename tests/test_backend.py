@@ -204,9 +204,9 @@ class TestModels:
             assert model.theme == theme
 
     def test_negative_score(self):
-        """Score < 0 should fail at API level, not model level."""
-        model = ScoreSubmit(init_data="test", score=-1, height=5)
-        assert model.score == -1  # Model allows it, API rejects it
+        """Score < 0 should fail at model validation level."""
+        with pytest.raises(Exception):
+            ScoreSubmit(init_data="test", score=-1, height=5)
 
     def test_negative_combo(self):
         with pytest.raises(Exception):
@@ -302,7 +302,7 @@ class TestAPI:
             "score": 999999,
             "height": 25,
         })
-        assert resp.status_code == 400
+        assert resp.status_code in (400, 422)  # rejected by validation or API
 
     def test_submit_and_leaderboard(self, client):
         token = "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
