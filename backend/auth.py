@@ -80,6 +80,12 @@ def validate_init_data(init_data: str, bot_token: str, max_age_seconds: int = 86
         hashlib.sha256,
     ).hexdigest()
 
+    # Debug: log raw init_data and data_check_string for diagnosis
+    print(f"[AUTH] raw_init_data (first 200): {init_data[:200]}", file=_sys.stderr)
+    print(f"[AUTH] data_check_string: {repr(data_check_string[:300])}", file=_sys.stderr)
+    print(f"[AUTH] received_hash: {received_hash}", file=_sys.stderr)
+    print(f"[AUTH] computed_hash:  {computed_hash}", file=_sys.stderr)
+
     if not hmac.compare_digest(computed_hash, received_hash):
         print("[AUTH] FAIL: hash mismatch", file=_sys.stderr)
         return None
