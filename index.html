@@ -768,6 +768,17 @@ function gameOver() {
 
     if (tgData) {
       const durationMs = Math.round(performance.now() - gameStartTime);
+      
+      // Debug: test auth validation
+      fetch(API.baseUrl + '/api/debug-auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ init_data: tgData }),
+      }).then(r => r.json()).then(d => {
+        window._debugAuth = d;
+        console.log('[DEBUG-AUTH]', JSON.stringify(d, null, 2));
+      }).catch(e => console.log('[DEBUG-AUTH] error:', e.message));
+      
       API.submitScore({
         score, height, bestCombo, perfectCount: totalPerfects, durationMs,
       }).then(result => {
