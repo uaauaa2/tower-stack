@@ -46,7 +46,7 @@ def generate_init_data(bot_token: str, user_id: int = 123456789,
     )
 
     # Compute HMAC
-    secret_key = hashlib.sha256(bot_token.encode()).digest()
+    secret_key = hmac.new(b"WebAppData", bot_token.encode(), hashlib.sha256).digest()
     computed_hash = hmac.new(
         secret_key,
         data_check_string.encode(),
@@ -140,7 +140,7 @@ class TestAuth:
             "auth_date": str(int(time.time())),
         }
         data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(params.items()))
-        secret_key = hashlib.sha256(self.BOT_TOKEN.encode()).digest()
+        secret_key = hmac.new(b"WebAppData", self.BOT_TOKEN.encode(), hashlib.sha256).digest()
         computed_hash = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
         params["hash"] = computed_hash
         init_data = urllib.parse.urlencode(params)
@@ -159,7 +159,7 @@ class TestAuth:
         }
         # Compute hash WITHOUT signature
         data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(params.items()))
-        secret_key = hashlib.sha256(self.BOT_TOKEN.encode()).digest()
+        secret_key = hmac.new(b"WebAppData", self.BOT_TOKEN.encode(), hashlib.sha256).digest()
         computed_hash = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
         
         # Add both hash and signature

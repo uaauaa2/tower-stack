@@ -70,8 +70,8 @@ def validate_init_data(init_data: str, bot_token: str, max_age_seconds: int = 86
         v = params[k]
         print(f"[AUTH] {k}: len={len(v)}", file=_sys.stderr)
 
-    # Compute secret key: SHA256 of bot_token
-    secret_key = hashlib.sha256(bot_token.encode()).digest()
+    # Compute secret key: HMAC-SHA256 of bot_token with "WebAppData" as key
+    secret_key = hmac.new(b"WebAppData", bot_token.encode(), hashlib.sha256).digest()
 
     # Compute HMAC-SHA256
     computed_hash = hmac.new(
