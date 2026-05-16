@@ -8,6 +8,9 @@ import os
 import json
 import time
 import urllib.parse
+import logging
+
+logger = logging.getLogger("towerstack.auth")
 
 # Try to import the validation library
 try:
@@ -17,30 +20,50 @@ except ImportError:
     _HAS_LIB = False
 
 
+def _parse_auth_date(init_data: str) -> int | None:
+    """Extract auth_date from init_data query string."""
+    try:
+        decoded = urllib.parse.unquote(init_data)
+        params = urllib.parse.parse_qs(decoded, keep_blank_values=True)
+        auth_date_str = params.get("auth_date", [None])[0]
+        if auth_date_str:
+            return int(auth_date_str)
+    except Exception:
+        pass
+    return None
+
+
 def validate_init_data(init_data: str, bot_token: str = "", max_age_seconds: int = 86400) -> dict | None:
     """
     Validate Telegram WebApp initData using Ed25519 third-party method.
     Returns parsed user dict if valid, None if invalid.
     """
-    import sys as _sys
-
     if not init_data:
-        print("[AUTH] FAIL: missing init_data", file=_sys.stderr)
+        logger.warning("Auth failed: missing init_data")
         return None
 
     bot_id_str = os.environ.get("BOT_ID", "")
     if not bot_id_str:
-        # Extract bot ID from token (everything before the colon)
         if bot_token:
             bot_id_str = bot_token.split(":")[0]
         else:
-            print("[AUTH] FAIL: no BOT_ID or bot_token", file=_sys.stderr)
+            logger.warning("Auth failed: no BOT_ID or bot_token")
             return None
 
     try:
         bot_id = int(bot_id_str)
     except (ValueError, TypeError):
-        print(f"[AUTH] FAIL: invalid BOT_ID ({bot_id_str})", file=_sys.stderr)
+        logger.warning(f"Auth failed: invalid BOT_ID ({bot_id_str})")
+        return None
+
+    # Validate auth_date BEFORE any validation method
+    auth_date = _parse_auth_date(init_data)
+    if auth_date is not None:
+        if time.time() - auth_date > max_age_seconds:
+            logger.warning(f"Auth failed: stale auth_date ({auth_date}, max_age={max_age_seconds}s)")
+            return None
+    else:
+        logger.warning("Auth failed: no auth_date in init_data")
         return None
 
     hmac_enabled = os.environ.get("HMAC_VALIDATE", "true").lower() != "false"
@@ -54,22 +77,22 @@ def validate_init_data(init_data: str, bot_token: str = "", max_age_seconds: int
                 bot_id=bot_id,
             )
             user = result.user
-            print(f"[AUTH] OK (Ed25519): user_id={user.id}, username={user.username}", file=_sys.stderr)
+            logger.info(f"Auth OK (Ed25519): user_id={user.id}, username={user.username}")
             return {
                 "id": user.id,
                 "username": user.username,
                 "first_name": user.first_name,
             }
         except Exception as e:
-            print(f"[AUTH] Ed25519 FAIL: {e}", file=_sys.stderr)
+            logger.warning(f"Ed25519 validation failed: {e}")
             return None
 
     # No library available and HMAC not enabled — reject
     if not _HAS_LIB and not hmac_enabled:
-        print("[AUTH] FAIL: no Ed25519 library and HMAC disabled — cannot validate", file=_sys.stderr)
+        logger.error("Auth failed: no Ed25519 library and HMAC disabled")
         return None
 
-    # Full HMAC validation (legacy, currently broken)
+    # Full HMAC validation (legacy)
     import hashlib
     import hmac as _hmac
 
@@ -86,14 +109,6 @@ def validate_init_data(init_data: str, bot_token: str = "", max_age_seconds: int
     received_hash = params.pop("hash", None)
     params.pop("signature", None)
 
-    auth_date = params.get("auth_date")
-    if auth_date:
-        try:
-            if time.time() - int(auth_date) > max_age_seconds:
-                return None
-        except (ValueError, TypeError):
-            return None
-
     data_check_string = "\n".join(
         f"{k}={v}" for k, v in sorted(params.items())
     )
@@ -106,7 +121,7 @@ def validate_init_data(init_data: str, bot_token: str = "", max_age_seconds: int
     ).hexdigest()
 
     if not received_hash or not _hmac.compare_digest(computed_hash, received_hash):
-        print("[AUTH] FAIL: hash mismatch", file=_sys.stderr)
+        logger.warning("Auth failed (HMAC): hash mismatch")
         return None
 
     user_data = params.get("user")
@@ -118,7 +133,7 @@ def validate_init_data(init_data: str, bot_token: str = "", max_age_seconds: int
     else:
         user = {}
 
-    print(f"[AUTH] OK (HMAC): user_id={user.get('id')}", file=_sys.stderr)
+    logger.info(f"Auth OK (HMAC): user_id={user.get('id')}")
     return {
         "id": user.get("id"),
         "username": user.get("username"),

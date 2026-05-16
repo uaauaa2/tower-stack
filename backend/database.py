@@ -3,7 +3,10 @@ from __future__ import annotations
 
 import os
 import json
+import logging
 from datetime import datetime, timedelta, timezone
+
+logger = logging.getLogger("towerstack.db")
 
 # ── Turso libSQL with SQLite fallback ──────────────────────────
 
@@ -117,10 +120,11 @@ def get_db():
         return _LibsqlConnection(raw)
     else:
         os.makedirs(os.path.dirname(LOCAL_DB_PATH), exist_ok=True)
-        conn = _sqlite3.connect(LOCAL_DB_PATH)
+        conn = _sqlite3.connect(LOCAL_DB_PATH, timeout=30.0)
         conn.row_factory = _sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA foreign_keys=ON")
+        conn.execute("PRAGMA busy_timeout=5000")
         return conn
 
 
