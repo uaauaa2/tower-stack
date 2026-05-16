@@ -10,7 +10,7 @@
 Players want a casual, satisfying mobile game they can launch instantly — no downloads, no installs. Tower Bloxx was a beloved classic that disappeared from modern app stores. A web-based recreation with Telegram integration makes it accessible to millions.
 
 ### Vision
-A single-tap casual game: a crane swings a block on a cable, you tap to drop it, stack blocks into a tower. The block retains its swing momentum when dropped — physics-based landing. Perfect timing = combos. Miss too many times (3) and the game ends. After each round, your tower joins a growing city skyline. Play in browser or inside Telegram.
+A single-tap casual game: a crane swings a block on a cable, you tap to drop it, stack blocks into a tower. The block retains its swing momentum when dropped — physics-based landing. Perfect timing = combos. Miss too many times (3) and the game ends. Play in browser or inside Telegram.
 
 ### Target Users
 - Casual mobile gamers
@@ -118,7 +118,8 @@ MENU ──tap──► PLAYING ──tap──► DROPPING ──land──► 
                                        └──miss──► (missesLeft--)
                                                    if 0 → GAME_OVER
 GAME_OVER ──retry──► PLAYING
-GAME_OVER ──city──► CITY_VIEW ──back──► MENU
+GAME_OVER ──retry──► PLAYING
+GAME_OVER ──leaderboard──► LEADERBOARD
 ```
 
 ---
@@ -270,19 +271,16 @@ As the tower grows, the background **changes theme** with smooth gradient transi
 
 ### 5.1 Main Menu
 - Title: "TOWER STACK" with bounce animation
-- Buttons: PLAY, MY CITY, SETTINGS
+- Buttons: PLAY, LEADERBOARD, SETTINGS
 - High score display
 - Animated sky background with clouds
 
 ### 5.1.1 Settings Screen
 - Opens as an overlay from the main menu
-- Shows all configurable physics/game parameters in a scrollable form:
-  - Block Size, Swing Speed, Cable Length, Cable Stretch %, Cable Spring Stiffness/Damping
-  - Gravity, Miss Overlap Ratio, Lives, Perfect Tolerance
-  - Visible Blocks, Camera Smooth
-  - Wobble Height Factor, Wobble Spring K, Wobble Damping
-- Pre-populated with current values from CFG
-- **Apply & Restart**: applies all changes and starts a new game
+- Shows visual theme selector (grid of theme buttons)
+- Themes: Classic, Cyberpunk, Pixel, ASCII
+- Theme change is instant (no restart needed)
+- **Apply & Restart**: closes settings and starts a new game
 - **Cancel**: returns to main menu without changes
 
 ### 5.2 Gameplay
@@ -294,15 +292,10 @@ As the tower grows, the background **changes theme** with smooth gradient transi
 - "TAP TO DROP" hint (fades after first drop)
 
 ### 5.3 Game Over
-- Overlay with stats: height, score, best combo
-- Buttons: RETRY, CITY
+- Overlay with stats: height, score, best combo, high score
+- Buttons: RETRY, LEADERBOARD
+- Score automatically submitted to backend (Telegram users only)
 - Tower saved to city on game over
-
-### 5.4 City View
-- Horizontal skyline of all previous towers
-- Scrollable with touch pan
-- Stats: total towers, highest building
-- Buttons: BACK, PLAY
 
 ---
 
@@ -393,7 +386,7 @@ gh api -X POST repos/uaauaa2/tower-stack/pages -f build_type=legacy -f source[br
 - [x] T11: HUD — score, combo, lives ❤️, floors
 - [x] T12: Scoring — combo system, score display
 - [x] T13: Menu screen — title, buttons, high score
-- [x] T14: Game over screen — stats, retry/city buttons
+- [x] T14: Game over screen — stats, retry/leaderboard buttons
 - [x] T15: City view — skyline rendering, scrollable
 - [x] T16: localStorage — save/load towers and scores
 

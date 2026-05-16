@@ -33,7 +33,7 @@
 **Location:** `backend/.env` line 1
 **Evidence:**
 ```
-BOT_TOKEN=8975490170:AAH-JmNVA9ALmDeizBlTl9BFtZpC6HJm0-A
+BOT_TOKEN=<set-via-render-env>
 ```
 **Impact:** The Telegram bot token is committed to the git repository. Anyone with repo access (including public if repo goes public) can control the bot — send messages as the bot, set webhooks, read user data. The `.gitignore` exists but was added *after* `.env` was already committed, so the token is in git history.
 **Fix:**

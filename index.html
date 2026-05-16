@@ -2347,11 +2347,8 @@ function drawMenu() {
   drawButton(W/2, H * 0.57, btnW, btnH, '🏆  LEADERBOARD', 'secondary');
   addButton('LEADERBOARD', W/2, H * 0.57, btnW, btnH, () => { state = STATES.LEADERBOARD; leaderboardData = null; }, 'secondary');
 
-  drawButton(W/2, H * 0.66, btnW, btnH, '🏙  MY CITY', 'secondary');
-  addButton('CITY', W/2, H * 0.66, btnW, btnH, () => { state = STATES.CITY_VIEW; cityScrollX = 0; }, 'secondary');
-
-  drawButton(W/2, H * 0.75, btnW, btnH, '⚙  SETTINGS', 'secondary');
-  addButton('SETTINGS', W/2, H * 0.75, btnW, btnH, () => { state = STATES.SETTINGS; initSettingsForm(); }, 'secondary');
+  drawButton(W/2, H * 0.66, btnW, btnH, '⚙  SETTINGS', 'secondary');
+  addButton('SETTINGS', W/2, H * 0.66, btnW, btnH, () => { state = STATES.SETTINGS; initSettingsForm(); }, 'secondary');
 
   ctx.textAlign = 'left';
 }
@@ -2419,28 +2416,14 @@ function drawGameOver() {
     ctx.fillText(`High Score: ${data.highScore}`, W/2, cardY + su * 7.8);
   }
 
-  // Show API status
-  const apiResult = window._lastApiResult;
-  const apiError = window._lastApiError;
-  const tgStatus = API.isTelegram() ? '✅ TG' : '❌ no TG';
-  let submitStatus = '';
-  if (apiResult) submitStatus = `✅ Rank #${apiResult.rank}`;
-  else if (apiError) submitStatus = `❌ ${apiError}`;
-  else if (API.isTelegram()) submitStatus = '⏳ sending...';
-  ctx.fillStyle = '#FFD700';
-  ctx.font = `bold ${su * 0.55}px ${th.fontFamily}`;
-  ctx.fillText(`${tgStatus} ${submitStatus}`, W/2, cardY + su * 8.6);
-
   const btnW = cardW * 0.72, btnH = su * 1.8;
   drawButton(W/2, cardY + su * 9.5, btnW, btnH, '▶  RETRY', 'primary');
   drawButton(W/2, cardY + su * 11.8, btnW, btnH, '🏆  LEADERBOARD', 'secondary');
-  drawButton(W/2, cardY + su * 14.1, btnW, btnH, '🏙  MY CITY', 'secondary');
 
   ctx.restore();
   buttons = [];
   addButton('RETRY', W/2, cardY + su * 9.5, btnW, btnH, () => startGame(), 'primary');
   addButton('LEADERBOARD', W/2, cardY + su * 11.8, btnW, btnH, () => { state = STATES.LEADERBOARD; leaderboardData = null; }, 'secondary');
-  addButton('CITY', W/2, cardY + su * 14.1, btnW, btnH, () => { state = STATES.CITY_VIEW; cityScrollX = 0; }, 'secondary');
   ctx.textAlign = 'left';
 }
 
@@ -2989,7 +2972,6 @@ function initSettingsForm() {
 
   // === Theme selector ===
   const themeSection = document.createElement('div');
-  themeSection.style.cssText = 'margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid #eee;';
   const themeLabel = document.createElement('div');
   themeLabel.textContent = 'Visual Theme';
   themeLabel.style.cssText = 'font-weight:bold;font-size:14px;color:#333;margin-bottom:8px;font-family:sans-serif;';
@@ -3018,46 +3000,9 @@ function initSettingsForm() {
   }
   themeSection.appendChild(themeGrid);
   form.appendChild(themeSection);
-
-  // === Physics / game settings ===
-  for (const def of SETTINGS_DEFS) {
-    const row = document.createElement('div');
-    row.className = 'srow';
-    const label = document.createElement('label');
-    label.textContent = def.label;
-    const input = document.createElement('input');
-    input.type = 'number';
-    input.min = def.min;
-    input.max = def.max;
-    input.step = def.step;
-    input.dataset.key = def.key;
-    // Get current value from CFG
-    let val = CFG[def.key];
-    // For cableLength, show the numeric value
-    if (def.key === 'cableLength') val = crane.cableLength || CFG.blockSize * 4;
-    // For angle params, convert radians → degrees for display
-    if (def.toRad) val = val * 180 / Math.PI;
-    input.value = parseFloat(val.toFixed(2));
-    row.appendChild(label);
-    row.appendChild(input);
-    form.appendChild(row);
-  }
 }
 
 function applySettings() {
-  const form = document.getElementById('settings-form');
-  const inputs = form.querySelectorAll('input');
-  for (const input of inputs) {
-    const key = input.dataset.key;
-    let val = parseFloat(input.value);
-    if (isNaN(val)) continue;
-    const def = SETTINGS_DEFS.find(d => d.key === key);
-    if (def && def.toRad) val = val * Math.PI / 180;
-    CFG[key] = val;
-  }
-  BS = CFG.blockSize;
-  // Clear sprite cache — sprites must be rebuilt at new BS
-  Object.keys(SPRITE_CACHE).forEach(k => delete SPRITE_CACHE[k]);
   closeSettings();
   startGame();
 }

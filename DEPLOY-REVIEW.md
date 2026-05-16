@@ -105,7 +105,7 @@ app = FastAPI(lifespan=lifespan)
 ### 4.2 `.env` File Contains Bot Token
 **Severity: MEDIUM**
 
-`backend/.env` contains `BOT_TOKEN=8975490170:AAH-...` in plaintext. While `.gitignore` excludes `.env` from git, the file exists locally. Ensure this token is only set via Render's encrypted env vars in production.
+`backend/.env` contains `BOT_TOKEN=<redacted>
 
 **Status:** `.gitignore` correctly excludes `.env` ✅
 

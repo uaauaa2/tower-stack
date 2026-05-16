@@ -36,7 +36,7 @@ The project is a Telegram Mini App game — HTML5 Canvas frontend on GitHub Page
 **Files:** Git commits `8facc0b`, `57914d2`  
 **Severity:** Critical
 
-The old bot token `8975490170:AAH-JmNVA9ALmDeizBlTl9BFtZpC6HJm0-A` is still in git history. The current `.env` has a **different** token (`AAFRJ4IZvlg...`), confirming rotation happened. However:
+The old bot token `<redacted-old-token>` is still in git history. The current `.env` has a **different** token (`<redacted>`), confirming rotation happened. However:
 
 - The repo is pushed to `github.com/uaauaa2/tower-stack` (public)
 - Anyone can `git clone` and `git show 8facc0b:backend/.env` to find the old token

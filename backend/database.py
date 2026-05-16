@@ -238,7 +238,7 @@ def get_player_stats(conn, player_id: int) -> dict:
 
 
 def get_leaderboard(conn, period: str = "all", limit: int = 10) -> list:
-    """Get top scores. period: 'all' or 'weekly'."""
+    """Get top scores. period: 'all' or 'weekly'. Allows multiple entries per player."""
     if period == "weekly":
         cutoff = datetime.now(timezone.utc).replace(
             hour=0, minute=0, second=0, microsecond=0
@@ -247,22 +247,18 @@ def get_leaderboard(conn, period: str = "all", limit: int = 10) -> list:
         cutoff = cutoff - timedelta(days=days_since_monday)
         cutoff_str = cutoff.isoformat()
         rows = conn.execute("""
-            SELECT MAX(g.score) as score, MAX(g.height) as height,
-                   MAX(g.created_at) as created_at,
+            SELECT g.score, g.height, g.created_at,
                    p.username, p.first_name, p.id as player_id
             FROM games g JOIN players p ON g.player_id = p.id
             WHERE g.created_at >= ?
-            GROUP BY g.player_id
-            ORDER BY score DESC LIMIT ?
+            ORDER BY g.score DESC LIMIT ?
         """, (cutoff_str, limit)).fetchall()
     else:
         rows = conn.execute("""
-            SELECT MAX(g.score) as score, MAX(g.height) as height,
-                   MAX(g.created_at) as created_at,
+            SELECT g.score, g.height, g.created_at,
                    p.username, p.first_name, p.id as player_id
             FROM games g JOIN players p ON g.player_id = p.id
-            GROUP BY g.player_id
-            ORDER BY score DESC LIMIT ?
+            ORDER BY g.score DESC LIMIT ?
         """, (limit,)).fetchall()
 
     result = []

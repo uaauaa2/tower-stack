@@ -25,7 +25,7 @@ The project is a Telegram Mini App game with a FastAPI + SQLite backend. Overall
 **File:** `backend/.env`  
 **Severity:** Critical
 
-The `.env` file contains a live bot token (`8975490170:AAH-JmNVA9ALmDeizBlTl9BFtZpC6HJm0-A`) and appears to be tracked in the repository. If this repo is public or becomes public, anyone can:
+The `.env` file contains a live bot token (`<redacted>`) and appears to be tracked in the repository. If this repo is public or becomes public, anyone can:
 - Control the bot
 - Read/update webhook settings
 - Impersonate the bot
@@ -40,7 +40,7 @@ The `.env` file contains a live bot token (`8975490170:AAH-JmNVA9ALmDeizBlTl9BFt
 **File:** (workspace `TOOLS.md` — separate Telegram bot credentials listed)  
 **Severity:** Critical
 
-The workspace `TOOLS.md` contains a **different** Telegram bot token (`8255404931:AAH0QAzBAqoUl1ESoJBLasU5oLhnmcb5_fw`) along with API credentials. While this isn't in the tower-stack repo itself, it's accessible in the same workspace and could be accidentally committed.
+The workspace `TOOLS.md` contains a **different** Telegram bot token (`<redacted>`) along with API credentials. While this isn't in the tower-stack repo itself, it's accessible in the same workspace and could be accidentally committed.
 
 **Remediation:** Move secrets to a vault or environment-only storage. Never store tokens in markdown files.
 
