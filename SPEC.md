@@ -301,6 +301,9 @@ As the tower grows, the background **changes theme** with smooth gradient transi
 - Any message to the bot receives a welcome reply with an inline Play button
 - No slash commands needed — bot is simple entry point to launch the game
 - WebApp button opens the game directly in Telegram
+- **Webhook registration:** after any backend URL change, register webhook:
+  `curl "https://api.telegram.org/bot<TOKEN>/setWebhook?url=<BACKEND_URL>/webhook&secret_token=<WEBHOOK_SECRET>"`
+- Backend validates `X-Telegram-Bot-Api-Secret-Token` header on every webhook call
 
 ---
 
