@@ -505,7 +505,9 @@ function spawnCrane() {
   crane.pivotX = W / 2;
   crane.pivotY = pivotY;
   crane.cableLength = cableLen;
-  crane.time = 0;
+  // Randomize starting phase so each block swings from a different
+  // position and direction — prevents spam-dropping with no aiming
+  crane.time = Math.random() * (2 * Math.PI / CFG.swingSpeed);
   crane.stretch = 0;
   crane.stretchVel = 0;
 }
