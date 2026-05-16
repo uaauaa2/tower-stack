@@ -297,6 +297,11 @@ As the tower grows, the background **changes theme** with smooth gradient transi
 - Score automatically submitted to backend (Telegram users only)
 - Tower saved to city on game over
 
+### 5.4 Telegram Bot
+- Any message to the bot receives a welcome reply with an inline Play button
+- No slash commands needed — bot is simple entry point to launch the game
+- WebApp button opens the game directly in Telegram
+
 ---
 
 ## 6. Visual Design
@@ -395,7 +400,7 @@ gh api -X POST repos/uaauaa2/tower-stack/pages -f build_type=legacy -f source[br
 - [ ] T18: Haptic feedback on drop/land/game over
 - [ ] T19: MainButton for primary actions
 - [ ] T20: Theme adaptation from Telegram params
-- [ ] T21: Bot setup — `/start` command → game link
+- [x] T21: Bot webhook — welcome message + Play button on any message
 
 ### Phase 3: Polish & Backend (Post-MVP)
 - [ ] T22: Procedural sound effects (Web Audio API)
