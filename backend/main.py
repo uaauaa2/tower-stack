@@ -73,17 +73,6 @@ def startup():
 
 # ── Health ──────────────────────────────────────────────────────
 
-@app.post("/api/admin/clear-leaderboard")
-def admin_clear_leaderboard():
-    conn = get_db()
-    conn.execute("DELETE FROM achievements")
-    conn.execute("DELETE FROM games")
-    conn.execute("DELETE FROM players")
-    conn.commit()
-    conn.close()
-    return {"status": "cleared"}
-
-
 @app.get("/api/health", response_model=HealthResponse)
 def health():
     try:
