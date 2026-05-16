@@ -1,22 +1,127 @@
 from __future__ import annotations
-"""Database setup and schema initialization."""
+"""Database setup — Turso (libSQL) with SQLite fallback for local dev."""
 
 import os
-import sqlite3
 import json
 from datetime import datetime, timedelta, timezone
 
-DB_PATH = os.environ.get("DB_PATH", os.path.join(os.path.dirname(__file__), "data", "towerstack.db"))
+# ── Turso libSQL with SQLite fallback ──────────────────────────
+
+try:
+    from libsql_experimental import connect as _libsql_connect
+    import sqlite3 as _sqlite3
+    HAS_LIBSQL = True
+except ImportError:
+    import sqlite3 as _sqlite3
+    HAS_LIBSQL = False
+
+
+class _Row:
+    """Dict-like row wrapper for libsql_experimental (returns tuples by default)."""
+    __slots__ = ("_data", "_map")
+
+    def __init__(self, description, values):
+        self._map = {desc[0]: i for i, desc in enumerate(description)}
+        self._data = values
+
+    def __getitem__(self, key):
+        if isinstance(key, str):
+            return self._data[self._map[key]]
+        return self._data[key]
+
+    def __repr__(self):
+        return repr(dict(self._map))
+
+
+class _LibsqlCursor:
+    """Wraps a libsql cursor to return _Row instead of tuple."""
+
+    def __init__(self, cursor):
+        self._cursor = cursor
+
+    @property
+    def description(self):
+        return self._cursor.description
+
+    def fetchone(self):
+        row = self._cursor.fetchone()
+        if row is None:
+            return None
+        if self._cursor.description:
+            return _Row(self._cursor.description, row)
+        return row
+
+    def fetchall(self):
+        rows = self._cursor.fetchall()
+        if self._cursor.description:
+            return [_Row(self._cursor.description, r) for r in rows]
+        return rows
+
+    def execute(self, sql, params=None):
+        if params:
+            self._cursor = self._cursor.execute(sql, params)
+        else:
+            self._cursor = self._cursor.execute(sql)
+        return self
+
+    def executemany(self, sql, params_list):
+        self._cursor.executemany(sql, params_list)
+        return self
+
+    @property
+    def lastrowid(self):
+        return self._cursor.lastrowid
+
+
+class _LibsqlConnection:
+    """Wraps a libsql_experimental connection to return _Row objects."""
+
+    def __init__(self, conn):
+        self._conn = conn
+
+    def execute(self, sql, params=None):
+        if params:
+            cur = self._conn.execute(sql, params)
+        else:
+            cur = self._conn.execute(sql)
+        return _LibsqlCursor(cur)
+
+    def executescript(self, sql):
+        # libsql doesn't support executescript natively; split and run each
+        for stmt in sql.split(";"):
+            stmt = stmt.strip()
+            if stmt:
+                self._conn.execute(stmt)
+
+    def commit(self):
+        self._conn.commit()
+
+    def rollback(self):
+        self._conn.rollback()
+
+    def close(self):
+        self._conn.close()
+
+
+# ── Connection config ──────────────────────────────────────────
+
+TURSO_URL = os.environ.get("TURSO_URL", "")       # e.g. libsql://tower-stack-xxx.turso.io
+TURSO_AUTH_TOKEN = os.environ.get("TURSO_AUTH_TOKEN", "")
+LOCAL_DB_PATH = os.environ.get("DB_PATH", os.path.join(os.path.dirname(__file__), "data", "towerstack.db"))
 
 
 def get_db():
     """Get a database connection. Caller must close it."""
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA foreign_keys=ON")
-    return conn
+    if HAS_LIBSQL and TURSO_URL:
+        raw = _libsql_connect(TURSO_URL, auth_token=TURSO_AUTH_TOKEN)
+        return _LibsqlConnection(raw)
+    else:
+        os.makedirs(os.path.dirname(LOCAL_DB_PATH), exist_ok=True)
+        conn = _sqlite3.connect(LOCAL_DB_PATH)
+        conn.row_factory = _sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA foreign_keys=ON")
+        return conn
 
 
 def init_db():
@@ -59,7 +164,8 @@ def init_db():
     """)
     conn.commit()
     conn.close()
-    print(f"[DB] Initialized at {DB_PATH}")
+    backend = "Turso" if (HAS_LIBSQL and TURSO_URL) else f"SQLite ({LOCAL_DB_PATH})"
+    print(f"[DB] Initialized at {backend}")
 
 
 def upsert_player(conn, telegram_id: int, username: str | None, first_name: str | None) -> int:
@@ -133,12 +239,10 @@ def get_player_stats(conn, player_id: int) -> dict:
 
 def get_leaderboard(conn, period: str = "all", limit: int = 10) -> list:
     """Get top scores. period: 'all' or 'weekly'."""
-    # Deduplicate by player — best score per player only
     if period == "weekly":
         cutoff = datetime.now(timezone.utc).replace(
             hour=0, minute=0, second=0, microsecond=0
         )
-        # Go back to last Monday
         days_since_monday = cutoff.weekday()
         cutoff = cutoff - timedelta(days=days_since_monday)
         cutoff_str = cutoff.isoformat()
@@ -163,7 +267,6 @@ def get_leaderboard(conn, period: str = "all", limit: int = 10) -> list:
 
     result = []
     for i, r in enumerate(rows):
-        # Use first_name or internal ID — never expose telegram_id
         name = r["username"] or r["first_name"] or f"Player {r['player_id']}"
         result.append({
             "rank": i + 1,

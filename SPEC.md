@@ -46,8 +46,8 @@ Vanilla HTML + CSS + JS. No frameworks, no build step. One file ships everything
 ### C-05: Telegram Ready
 Must work as Telegram Mini App with minimal changes.
 
-### C-06: Data Local First
-All progress stored in localStorage. Backend/leaderboard is a future addition.
+### C-06: Data Persistent
+All player progress and scores stored in Turso (cloud libSQL). Local SQLite fallback for development. No data loss on server restarts.
 
 ---
 
@@ -71,14 +71,16 @@ All progress stored in localStorage. Backend/leaderboard is a future addition.
 | Domain | `uaauaa2.github.io/tower-stack` | Free |
 | CI/CD | GitHub Actions (auto-deploy on push) | Free |
 
-### 3.3 Future Backend (Python, post-MVP)
+### 3.3 Backend (Python, FastAPI)
 
 | Component | Technology | Reason |
 |-----------|-----------|--------|
 | API | FastAPI (Python 3.12+) | Async, lightweight, Telegram-friendly |
-| Hosting | Render or Railway | Free tier available |
-| DB | Supabase (PostgreSQL) or SQLite | TBD when needed |
+| Hosting | Render | Free tier available |
+| DB | **Turso (libSQL)** | Persistent cloud SQLite, free tier: 9GB, 1B reads/mo |
 | Auth | Telegram WebAppData | Native, no passwords |
+
+**Note on database choice:** Originally used local SQLite on Render, but Render's free tier has an ephemeral filesystem — data was lost on every restart/redeploy. Turso provides a persistent, replicated, cloud-based SQLite-compatible database with a generous free tier. The `database.py` module supports both Turso (production, via `TURSO_URL` + `TURSO_AUTH_TOKEN` env vars) and local SQLite (fallback for development).
 
 ### 3.4 Architecture
 
